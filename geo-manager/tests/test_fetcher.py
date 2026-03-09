@@ -190,6 +190,14 @@ def test_download_url():
     assert data == b"data"
 
 
+def test_download_url_file_scheme(tmp_path):
+    """file:// wird gelesen, kein Netzwerk nötig."""
+    f = tmp_path / "geo.csv"
+    f.write_bytes(b"network,country_iso_code\n1.0.0.0/24,DE\n")
+    data = download_url(f"file://{f}")
+    assert data == b"network,country_iso_code\n1.0.0.0/24,DE\n"
+
+
 @patch("geo_manager.fetcher.download_url")
 def test_fetch_geo_csv_to_map(mock_dl):
     mock_dl.side_effect = [

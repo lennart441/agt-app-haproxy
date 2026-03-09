@@ -20,7 +20,7 @@ services:
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
       - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
       - ./conf/maps:/usr/local/etc/haproxy/maps
-      - haproxy-socket:/var/run/haproxy-stat
+      - ./run/haproxy-stat:/var/run/haproxy-stat
 
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
@@ -71,6 +71,12 @@ services:
       context: .
       dockerfile: geo-manager/Dockerfile
     container_name: geo-manager
+    depends_on:
+      haproxy:
+        condition: service_started
+    # Für lokalen Test: Geo-Quelle vom Host (z. B. python -m http.server in conf/test-data)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -97,16 +103,17 @@ services:
       - BUILD_SLEEP_AFTER_CHUNK_MS=${BUILD_SLEEP_AFTER_CHUNK_MS:-50}
     volumes:
       - ./conf/maps:/usr/local/etc/haproxy/maps
-      - haproxy-socket:/var/run/haproxy-stat
+      - ./conf/test-data:/data:ro
       - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./conf/errors:/usr/local/etc/haproxy/errors:ro
+      - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+      - ./run/haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"
     restart: always
     networks:
       - security-net
-
-volumes:
-  haproxy-socket:
 
 networks:
   security-net: {}

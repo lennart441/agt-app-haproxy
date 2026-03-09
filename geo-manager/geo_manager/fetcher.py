@@ -1,6 +1,7 @@
 """
 Download Geo-IP data and convert to HAProxy map format.
 Supports MaxMind GeoLite2 CSV (GeoLite2-Country-Blocks-IPv4.csv + GeoLite2-Country-Locations-en.csv).
+Accepts http(s):// URLs and file:// for local files (z. B. wenn der Container kein Internet hat).
 """
 import csv
 import io
@@ -8,6 +9,7 @@ import ipaddress
 import logging
 import os
 import time
+import urllib.parse
 import urllib.request
 from typing import Dict, List, Tuple
 
@@ -15,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 def download_url(url: str, timeout: int = 60) -> bytes:
-    """Download URL and return raw bytes."""
+    """Download URL or read local file (file://). Returns raw bytes."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme == "file":
+        path = urllib.parse.unquote(parsed.path)
+        with open(path, "rb") as f:
+            return f.read()
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()

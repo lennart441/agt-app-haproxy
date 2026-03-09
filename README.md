@@ -33,6 +33,36 @@ Einheitliches Docker-Setup für HAProxy 3+ mit Coraza WAF und Geo-Manager (Safet
 
 Auf jedem der drei Server denselben Ablauf mit jeweils passender `.env` ausführen. Es wird nur eine `docker-compose.yaml` verwendet.
 
+## Lokaler Test (Laptop)
+
+Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Reload) lokal:
+
+**Voraussetzungen:** Coraza-Regeln in `coraza/rules/` (Stub-Dateien reichen). SSL + Socket: für lokalen Test einmal `./scripts/gen-dev-cert.sh` ausführen (erzeugt `ssl/haproxy.pem` und bereitet `run/haproxy-stat` mit Rechten für HAProxy vor). Wenn HAProxy im Loop abstürzt („Restarting“): `sudo chown 99:99 run/haproxy-stat` ausführen.
+
+1. **Geo-CSV einmalig auf dem Host laden** (im Container oft kein Internet):
+   ```bash
+   curl -o conf/test-data/geoip2-ipv4.csv https://raw.githubusercontent.com/datasets/geoip2-ipv4/main/data/geoip2-ipv4.csv
+   ```
+
+2. **`.env` für lokalen Lauf anlegen**
+   ```bash
+   cp .env.local.example .env
+   ```
+   Darin steht `GEO_SOURCE_URL=file:///data/geoip2-ipv4.csv` – die Datei wird aus dem gemounteten Ordner `conf/test-data` gelesen.
+
+3. **Stack starten**
+   ```bash
+   docker compose up --build -d
+   ```
+
+4. **Ablauf beobachten**
+   - Geo-Manager (Master) lädt die CSV, baut die Maps und triggert den HAProxy-Reload (erster Lauf kann etwas dauern).
+   - Logs: `docker compose logs -f geo-manager`
+   - Status: `curl -s http://localhost:8080/geo/status`
+   - Danach: `conf/maps/geo.map` und `conf/maps/whitelist.map` sind aktualisiert.
+
+**Optional:** Eigene Test-CSV lokal bereitstellen: `GEO_SOURCE_URL=http://host.docker.internal:8000/geo-sample.csv` setzen und in einem Terminal `cd conf/test-data && python3 -m http.server 8000` starten.
+
 ## Geo-Manager
 
 - **Master (Prio 1)**: Lädt periodisch die Geo-Quelle, prüft Syntax (haproxy -c), Größe und Anchor-IPs, schreibt Maps und löst Reload aus. Setzt danach `validated_at`.

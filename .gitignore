@@ -1,12 +1,15 @@
 # Python
 __pycache__/
 *.py[cod]
+.coverage
+htmlcov/
 *.egg-info/
 .eggs/
 dist/
 build/
 .venv/
 venv/
+haproxy.pem
 
 # Env (sensitive)
 .env
@@ -17,6 +20,15 @@ venv/
 .vscode/
 *.swp
 *.swo
+
+# Lokal heruntergeladene Geo-CSV (optional, siehe README)
+conf/test-data/geoip2-ipv4.csv
+
+# HAProxy Stats-Socket (Bind-Mount für lokalen Test)
+run/
+
+# Geo-Manager: generierte Größen-Datei
+conf/maps/geo.map.size
 
 # OS
 .DS_Store
