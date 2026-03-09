@@ -1,0 +1,103 @@
+# Unified HAProxy + Coraza WAF + Geo-Manager for all nodes.
+# Differentiate per server via .env: NODE_NAME, NODE_PRIO, MESH_NODES, ANCHOR_IPS, GEO_SOURCE_URL.
+
+services:
+  haproxy:
+    image: haproxy:3.2-alpine
+    container_name: haproxy_gateway
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "56708:56708"
+      - "50000:50000"
+      - "8404:8404"
+
+    volumes:
+      - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./ssl:/etc/ssl/certs:ro
+      - ./conf/errors:/usr/local/etc/haproxy/errors:ro
+      - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
+      - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
+      - ./conf/maps:/usr/local/etc/haproxy/maps
+      - haproxy-socket:/var/run/haproxy-stat
+
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    restart: always
+    depends_on:
+      coraza-spoa:
+        condition: service_started
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+    networks:
+      - security-net
+
+  coraza-spoa:
+    build:
+      context: .
+      dockerfile: coraza/Dockerfile.coraza
+    container_name: coraza-spoa
+    command: ["-config", "/etc/coraza-spoa/config.yaml"]
+    volumes:
+      - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
+      - ./coraza/rules:/etc/coraza-spoa/rules:ro
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    networks:
+      security-net:
+        aliases:
+          - coraza-spoa
+
+  geo-manager:
+    build:
+      context: .
+      dockerfile: geo-manager/Dockerfile
+    container_name: geo-manager
+    environment:
+      - NODE_NAME=${NODE_NAME:-agt-1}
+      - NODE_PRIO=${NODE_PRIO:-1}
+      - MESH_NODES=${MESH_NODES:-}
+      - ANCHOR_IPS=${ANCHOR_IPS:-}
+      - GEO_SOURCE_URL=${GEO_SOURCE_URL:-}
+      - GEO_BLOCKS_URL=${GEO_BLOCKS_URL:-}
+      - GEO_LOCATIONS_URL=${GEO_LOCATIONS_URL:-}
+      - MAP_DIR=/usr/local/etc/haproxy/maps
+      - HAPROXY_CFG_PATH=/usr/local/etc/haproxy/haproxy.cfg
+      - HAPROXY_SOCKET=/var/run/haproxy-stat/socket
+      - STAGE_DELAY_PRIO2_HOURS=${STAGE_DELAY_PRIO2_HOURS:-48}
+      - STAGE_DELAY_PRIO3_HOURS=${STAGE_DELAY_PRIO3_HOURS:-96}
+      - FETCH_INTERVAL_HOURS=${FETCH_INTERVAL_HOURS:-24}
+      - GEO_STATUS_PORT=8080
+      - SIZE_DEVIATION_THRESHOLD=${SIZE_DEVIATION_THRESHOLD:-0.9}
+    volumes:
+      - ./conf/maps:/usr/local/etc/haproxy/maps
+      - haproxy-socket:/var/run/haproxy-stat
+      - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "8080:8080"
+    restart: always
+    networks:
+      - security-net
+
+volumes:
+  haproxy-socket:
+
+networks:
+  security-net: {}

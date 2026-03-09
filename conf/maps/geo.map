@@ -1,0 +1,2 @@
+# Initial default: all IPs blocked (XX). Geo-manager overwrites with real data.
+0.0.0.0/0	XX

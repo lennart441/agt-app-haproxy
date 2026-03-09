@@ -1,0 +1,339 @@
+"""Tests for main.py HTTP handler and helpers."""
+import json
+import runpy
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from geo_manager.main import (
+    GeoStatusHandler,
+    get_validated_at,
+    set_validated_at,
+    run_master_loop,
+    run_follower_loop,
+    _master_fetch_validate_activate,
+)
+from geo_manager.config import Config
+
+
+def test_set_get_validated_at():
+    set_validated_at(datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc))
+    assert get_validated_at() is not None
+    assert get_validated_at().year == 2026
+
+
+def test_geo_status_handler_404():
+    """Handler returns 404 for non-/geo/status path."""
+    handler = MagicMock()
+    handler.path = "/other"
+    handler.server = MagicMock()
+    handler.server.config = MagicMock()
+    GeoStatusHandler.do_GET(handler)
+    handler.send_error.assert_called_once_with(404)
+
+
+def test_geo_status_handler_200():
+    """Handler returns JSON for GET /geo/status."""
+    handler = MagicMock()
+    handler.path = "/geo/status"
+    handler.server = MagicMock()
+    handler.server.config = MagicMock()
+    handler.server.config.node_prio = 1
+    handler.server.config.node_name = "agt-1"
+    set_validated_at(None)
+    GeoStatusHandler.do_GET(handler)
+    handler.send_response.assert_called_once_with(200)
+    handler.send_header.assert_any_call("Content-Type", "application/json")
+    write_calls = handler.wfile.write.call_args_list
+    assert len(write_calls) == 1
+    body = write_calls[0][0][0]
+    data = json.loads(body.decode("utf-8"))
+    assert data["node_prio"] == 1
+    assert data["node_name"] == "agt-1"
+    assert "validated_at" in data
+
+
+def test_geo_status_handler_200_with_validated_at():
+    handler = MagicMock()
+    handler.path = "/geo/status"
+    handler.server = MagicMock()
+    handler.server.config = MagicMock()
+    handler.server.config.node_prio = 1
+    handler.server.config.node_name = "agt-1"
+    set_validated_at(datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc))
+    GeoStatusHandler.do_GET(handler)
+    write_calls = handler.wfile.write.call_args_list
+    data = json.loads(write_calls[0][0][0].decode("utf-8"))
+    assert data["validated_at"] is not None
+    assert "2026" in data["validated_at"]
+
+
+def test_log_message():
+    handler = MagicMock()
+    handler.address_string.return_value = "127.0.0.1"
+    GeoStatusHandler.log_message(handler, "GET %s", "/geo/status")
+    # Just ensure it doesn't raise; log_message uses logger.debug
+
+
+def test_run_master_loop_no_url_exits_early(monkeypatch):
+    monkeypatch.setenv("GEO_SOURCE_URL", "")
+    config = Config.from_env()
+    run_master_loop(config)
+
+
+@patch("geo_manager.main._master_fetch_validate_activate")
+def test_run_master_loop_with_url_calls_fetch_then_sleep(mock_activate, monkeypatch):
+    monkeypatch.setenv("GEO_SOURCE_URL", "http://example.com/geo.csv")
+    config = Config.from_env()
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_master_loop(config)
+    assert mock_activate.call_count == 2
+
+
+@patch("geo_manager.main._master_fetch_validate_activate")
+def test_run_master_loop_exception_logs_and_continues(mock_activate, monkeypatch):
+    monkeypatch.setenv("GEO_SOURCE_URL", "http://example.com/geo.csv")
+    config = Config.from_env()
+    mock_activate.side_effect = [Exception("fail"), Exception("stop")]
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_master_loop(config)
+    assert mock_activate.call_count == 2
+
+
+def test_main_starts_server_and_serve_forever():
+    with patch("geo_manager.main.HTTPServer") as mock_http:
+        with patch("geo_manager.main.threading.Thread"):
+            mock_server = MagicMock()
+            mock_http.return_value = mock_server
+            mock_server.serve_forever.side_effect = StopIteration("stop")
+            with pytest.raises(StopIteration):
+                from geo_manager.main import main
+                main()
+    mock_server.serve_forever.assert_called_once()
+
+
+def test_main_starts_follower_thread_when_not_master():
+    with patch("geo_manager.main.HTTPServer") as mock_http:
+        with patch("geo_manager.main.threading.Thread") as mock_thread:
+            mock_server = MagicMock()
+            mock_http.return_value = mock_server
+            mock_server.serve_forever.side_effect = StopIteration("stop")
+            config = Config.from_env()
+            config.node_prio = 2
+            config.am_i_master = lambda: False
+            with patch("geo_manager.main.Config.from_env", return_value=config):
+                with pytest.raises(StopIteration):
+                    from geo_manager.main import main
+                    main()
+    mock_thread.assert_called_once()
+    assert mock_thread.call_args[1]["target"].__name__ == "run_follower_loop"
+
+
+def test_main_module_main_block():
+    """Cover the if __name__ == '__main__': main() block in main.py."""
+    import geo_manager.main as main_mod
+    with patch.object(main_mod, "main", side_effect=SystemExit(0)):
+        with pytest.raises(SystemExit):
+            exec("if __name__ == '__main__': main()", {**vars(main_mod), "__name__": "__main__"})
+
+
+@patch("geo_manager.main.get_master_validated_at")
+@patch("geo_manager.main._master_fetch_validate_activate")
+def test_run_follower_loop_activates_when_ready(mock_activate, mock_get_master):
+    from datetime import timedelta
+    config = Config.from_env()
+    config.node_prio = 2
+    config.mesh_nodes = ["172.20.0.1"]
+    old = datetime.now(timezone.utc) - timedelta(hours=50)
+    mock_get_master.return_value = ("172.20.0.1", old)
+    # Run one iteration by patching time.sleep to raise after first iteration
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_follower_loop(config)
+    mock_activate.assert_called()
+
+
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_csv_to_map")
+def test_master_fetch_validate_activate_uses_blocks_and_locations(
+    mock_csv, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GEO_BLOCKS_URL", "http://a/blocks.csv")
+    monkeypatch.setenv("GEO_LOCATIONS_URL", "http://a/loc.csv")
+    mock_csv.return_value = "1.0.0.0/24\tDE\n"
+    mock_whitelist.return_value = ""
+    mock_size.return_value = True
+    mock_anchors.return_value = True
+    mock_syntax.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    _master_fetch_validate_activate(config)
+    mock_csv.assert_called_once()
+
+
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+@patch("geo_manager.main.fetch_geo_csv_to_map")
+def test_master_fetch_validate_activate_success(
+    mock_csv, mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload,
+    tmp_path,
+):
+    mock_whitelist.return_value = "8.8.8.8\t1\n"
+    mock_single.return_value = "1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n"
+    mock_csv.side_effect = Exception("not used")
+    mock_size.return_value = True
+    mock_anchors.return_value = True
+    mock_syntax.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "haproxy.cfg")
+    config.anchor_ips = ["8.8.8.8"]
+    (tmp_path / "geo.map").write_text("old")
+    _master_fetch_validate_activate(config)
+    mock_write.assert_called()
+    mock_reload.assert_called_once()
+    assert not (tmp_path / "geo.map.bak").exists()
+
+
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_empty_content(mock_single):
+    mock_single.return_value = "   \n"
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    _master_fetch_validate_activate(config)
+
+
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_size_fail(mock_single, mock_size):
+    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_size.return_value = False
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    _master_fetch_validate_activate(config)
+
+
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_anchor_fail(mock_single, mock_size, mock_anchors):
+    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_size.return_value = True
+    mock_anchors.return_value = False
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    _master_fetch_validate_activate(config)
+
+
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_syntax_fail_restores_backup(
+    mock_single, mock_whitelist, mock_write, mock_syntax, tmp_path
+):
+    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_whitelist.return_value = ""
+    mock_syntax.return_value = False
+    (tmp_path / "geo.map").write_text("old")
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    _master_fetch_validate_activate(config)
+    assert (tmp_path / "geo.map").read_text() == "old"
+
+
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_reload_fails(
+    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path
+):
+    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_whitelist.return_value = ""
+    mock_size.return_value = True
+    mock_anchors.return_value = True
+    mock_syntax.return_value = True
+    mock_reload.return_value = False
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    _master_fetch_validate_activate(config)
+    mock_reload.assert_called_once()
+
+
+def test_run_follower_loop_prio1_returns_immediately():
+    config = Config.from_env()
+    config.node_prio = 1
+    run_follower_loop(config)
+
+
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.should_follower_activate")
+@patch("geo_manager.main.get_master_validated_at")
+def test_run_follower_loop_result_none_continues(mock_get, mock_should, mock_activate):
+    config = Config.from_env()
+    config.node_prio = 2
+    config.mesh_nodes = ["172.20.0.1"]
+    mock_get.return_value = None
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_follower_loop(config)
+    mock_activate.assert_not_called()
+
+
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.should_follower_activate")
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.should_follower_activate")
+@patch("geo_manager.main.get_master_validated_at")
+def test_run_follower_loop_exception_logged_and_continues(mock_get, mock_should, mock_activate, *_):
+    config = Config.from_env()
+    config.node_prio = 2
+    config.mesh_nodes = ["172.20.0.1"]
+    mock_get.side_effect = Exception("err")
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_follower_loop(config)
+    mock_activate.assert_not_called()
+
+
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.should_follower_activate")
+@patch("geo_manager.main.get_master_validated_at")
+def test_run_follower_loop_should_not_activate_continues(mock_get, mock_should, mock_activate):
+    config = Config.from_env()
+    config.node_prio = 2
+    config.mesh_nodes = ["172.20.0.1"]
+    mock_get.return_value = ("172.20.0.1", None)
+    mock_should.return_value = False
+    with patch("geo_manager.main.time.sleep", side_effect=[None, StopIteration]):
+        with pytest.raises(StopIteration):
+            run_follower_loop(config)
+    mock_activate.assert_not_called()

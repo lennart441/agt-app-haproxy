@@ -1,0 +1,26 @@
+# /conf/coraza-spoa.yaml
+bind: 0.0.0.0:9000
+default_application: agt_waf
+log_level: info
+log_format: console
+
+applications:
+ - name: agt_waf
+   log_level: info
+   log_format: console
+   directives: |
+     Include @coraza.conf-recommended
+
+     SecRuleEngine On
+
+     SecRequestBodyAccess On
+     SecRequestBodyLimit 1048576
+     SecRequestBodyNoFilesLimit 1048576
+
+     SecRule REQUEST_HEADERS:Content-Type "@rx (?i)application/json" \
+       "id:999001,phase:1,nolog,pass,ctl:requestBodyProcessor=JSON"
+
+     Include /etc/coraza-spoa/rules/crs-setup.conf.example
+     Include /etc/coraza-spoa/rules/rules/*.conf
+
+     SecRule ARGS:testwaf "123" "id:190001,phase:2,deny,status:403,msg:'Coraza WAF Test Block'"

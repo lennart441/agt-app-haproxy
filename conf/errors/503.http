@@ -1,0 +1,7 @@
+HTTP/1.0 503 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/plain
+Content-Length: 24
+
+503 Service Unavailable

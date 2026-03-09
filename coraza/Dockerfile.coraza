@@ -1,0 +1,15 @@
+# Coraza SPOA WAF agent for HAProxy
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git
+RUN go install github.com/magefile/mage@latest
+
+WORKDIR /app
+RUN git clone https://github.com/corazawaf/coraza-spoa.git .
+RUN mage build
+
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates
+WORKDIR /app
+COPY --from=builder /app/build/coraza-spoa /usr/local/bin/coraza-spoa
+ENTRYPOINT ["coraza-spoa"]

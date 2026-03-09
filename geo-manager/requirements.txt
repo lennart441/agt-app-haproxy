@@ -1,0 +1,4 @@
+# Runtime: stdlib only (urllib, csv, json, http.server).
+# Tests (see requirements-dev.txt or install separately):
+# pytest>=7.0
+# pytest-cov>=4.0

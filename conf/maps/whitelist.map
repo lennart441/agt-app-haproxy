@@ -1,0 +1,2 @@
+# Anchor IPs whitelist. Geo-manager populates from ANCHOR_IPS. 127.0.0.1 for localhost.
+127.0.0.1	1

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install geo-manager test deps
+        run: |
+          cd geo-manager
+          python -m venv .venv
+          .venv/bin/pip install -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: |
+          cd geo-manager
+          PYTHONPATH=. .venv/bin/pytest tests/ -v --cov=geo_manager --cov-fail-under=100 --cov-report=term-missing
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build geo-manager image
+        run: docker build -f geo-manager/Dockerfile -t geo-manager:test .
+
+      - name: Build Coraza image
+        run: docker build -f coraza/Dockerfile.coraza -t coraza-spoa:test .

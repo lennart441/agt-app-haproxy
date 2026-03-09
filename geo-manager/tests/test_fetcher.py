@@ -1,0 +1,161 @@
+"""Tests for geo_manager.fetcher."""
+import io
+import tempfile
+from unittest.mock import patch
+
+import pytest
+
+from geo_manager.fetcher import (
+    build_geo_map,
+    build_whitelist_map,
+    download_url,
+    parse_country_blocks_csv,
+    parse_country_locations_csv,
+    write_maps,
+    _convert_simple_csv_to_map,
+    _sort_key_network,
+    fetch_geo_csv_to_map,
+    fetch_geo_from_single_url,
+)
+
+
+def test_parse_country_blocks_csv():
+    content = b"network,geoname_id,registered_country_geoname_id\n1.0.0.0/24,123,123\n2.0.0.0/24,456,456"
+    rows = parse_country_blocks_csv(content)
+    assert len(rows) == 2
+    assert rows[0] == ("1.0.0.0/24", 123)
+    assert rows[1] == ("2.0.0.0/24", 456)
+
+
+def test_parse_country_blocks_csv_invalid_geoname_id_uses_zero():
+    content = b"network,geoname_id\n1.0.0.0/24,not_a_number"
+    rows = parse_country_blocks_csv(content)
+    assert len(rows) == 1
+    assert rows[0] == ("1.0.0.0/24", 0)
+
+
+def test_parse_country_blocks_csv_registered_country_geoname_id():
+    content = b"network,geoname_id,registered_country_geoname_id\n1.0.0.0/24,,456"
+    rows = parse_country_blocks_csv(content)
+    assert len(rows) == 1
+    assert rows[0] == ("1.0.0.0/24", 456)
+
+
+def test_parse_country_blocks_csv_empty_network_skipped():
+    content = b"network,geoname_id\n,123\n2.0.0.0/24,456"
+    rows = parse_country_blocks_csv(content)
+    assert len(rows) == 1
+    assert rows[0][0] == "2.0.0.0/24"
+
+
+def test_parse_country_locations_csv():
+    content = b"geoname_id,country_iso_code,locale_code\n123,DE,\n456,US,"
+    result = parse_country_locations_csv(content)
+    assert result[123] == "DE"
+    assert result[456] == "US"
+
+
+def test_parse_country_locations_csv_invalid_geoname_skipped():
+    content = b"geoname_id,country_iso_code\nx,DE\n1,AT"
+    result = parse_country_locations_csv(content)
+    assert 1 in result
+    assert result[1] == "AT"
+
+
+def test_build_geo_map():
+    blocks = [("10.0.0.0/8", 1), ("192.168.0.0/24", 2)]
+    locations = {1: "DE", 2: "AT"}
+    out = build_geo_map(blocks, locations)
+    assert "10.0.0.0/8\tDE" in out
+    assert "192.168.0.0/24\tAT" in out
+
+
+def test_build_geo_map_missing_location_defaults():
+    blocks = [("10.0.0.0/8", 999)]
+    locations = {}
+    out = build_geo_map(blocks, locations, default_country="XX")
+    assert "10.0.0.0/8\tXX" in out
+
+
+def test_build_geo_map_empty():
+    out = build_geo_map([], {})
+    assert out == ""
+
+
+def test_build_geo_map_invalid_country_len_becomes_default():
+    blocks = [("10.0.0.0/8", 1)]
+    locations = {1: "DEU"}  # 3 chars -> default
+    out = build_geo_map(blocks, locations, default_country="XX")
+    assert "10.0.0.0/8\tXX" in out
+
+
+def test_sort_key_network():
+    assert _sort_key_network("10.0.0.0/8\tDE") != (0, 0)
+    assert _sort_key_network("invalid\tXX") == (0, 0)
+
+
+def test_build_whitelist_map():
+    out = build_whitelist_map(["8.8.8.8", "1.1.1.1"])
+    assert "8.8.8.8\t1" in out
+    assert "1.1.1.1\t1" in out
+
+
+def test_build_whitelist_map_empty():
+    out = build_whitelist_map([])
+    assert out == ""
+
+
+def test_build_whitelist_map_skips_comments():
+    out = build_whitelist_map(["# comment", "8.8.8.8"])
+    assert "8.8.8.8" in out
+    assert "#" not in out or "comment" not in out
+
+
+def test_convert_simple_csv_to_map():
+    content = b"network,country_iso_code\n1.0.0.0/24,DE\n2.0.0.0/24,US"
+    out = _convert_simple_csv_to_map(content)
+    assert "1.0.0.0/24\tDE" in out
+    assert "2.0.0.0/24\tUS" in out
+
+
+def test_convert_simple_csv_to_map_alternative_columns():
+    content = b"network_cidr,country\n10.0.0.0/8,AT"
+    out = _convert_simple_csv_to_map(content)
+    assert "10.0.0.0/8\tAT" in out
+
+
+def test_convert_simple_csv_to_map_invalid_country_becomes_xx():
+    content = b"network,country\n1.0.0.0/24,XXX"
+    out = _convert_simple_csv_to_map(content)
+    assert "XX" in out
+
+
+def test_write_maps(tmp_path):
+    write_maps(str(tmp_path), "1.0.0.0/24\tDE\n", "8.8.8.8\t1\n")
+    assert (tmp_path / "geo.map").read_text() == "1.0.0.0/24\tDE\n"
+    assert (tmp_path / "whitelist.map").read_text() == "8.8.8.8\t1\n"
+
+
+def test_download_url():
+    with patch("urllib.request.urlopen") as m:
+        m.return_value.__enter__.return_value.read.return_value = b"data"
+        data = download_url("http://example.com/x", timeout=5)
+    assert data == b"data"
+
+
+@patch("geo_manager.fetcher.download_url")
+def test_fetch_geo_csv_to_map(mock_dl):
+    mock_dl.side_effect = [
+        b"network,geoname_id\n1.0.0.0/24,1\n2.0.0.0/24,2",
+        b"geoname_id,country_iso_code\n1,DE\n2,US",
+    ]
+    out = fetch_geo_csv_to_map("http://a/blocks.csv", "http://a/loc.csv")
+    assert "1.0.0.0/24\tDE" in out
+    assert "2.0.0.0/24\tUS" in out
+
+
+@patch("geo_manager.fetcher.download_url")
+def test_fetch_geo_from_single_url(mock_dl):
+    mock_dl.return_value = b"network,country_iso_code\n1.0.0.0/24,DE\n"
+    out = fetch_geo_from_single_url("http://example.com/geo.csv")
+    assert "1.0.0.0/24\tDE" in out
