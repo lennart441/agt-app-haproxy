@@ -1,0 +1,12 @@
+---
+description: Geo-Manager Python: Struktur, Tests, Coverage
+globs: geo-manager/**/*.py
+alwaysApply: false
+---
+
+# Geo-Manager (Python)
+
+- Paket: `geo_manager` unter `geo-manager/geo_manager/`. Einstieg: `python -m geo_manager`.
+- Module: `config` (ENV), `fetcher` (Download/Konvertierung Maps), `validation` (Syntax/Size/Anchor), `staging` (Leader/Staged Rollout), `reload` (HAProxy-Socket), `main` (HTTP /geo/status + Loops).
+- Tests in `geo-manager/tests/`. Vor Änderungen/Erweiterungen Tests anpassen; **100 % Coverage** beibehalten: `PYTHONPATH=. pytest tests/ -v --cov=geo_manager --cov-fail-under=100`.
+- Runtime möglichst stdlib-only; neue Abhängigkeiten in `requirements.txt` eintragen und im Dockerfile berücksichtigen.

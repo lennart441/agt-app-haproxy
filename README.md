@@ -2,6 +2,8 @@
 
 Einheitliches Docker-Setup für HAProxy 3+ mit Coraza WAF und Geo-Manager (Safety Pipeline, Staged Rollout). Ein Repo, eine `docker-compose.yaml`; die Differenzierung pro Server erfolgt nur über die `.env`.
 
+**Für KI-Agenten und Weiterentwicklung**: Siehe [AGENTS.md](AGENTS.md) (Architektur, Konventionen, Erweiterung, Tests).
+
 ## Komponenten
 
 - **HAProxy 3.2**: Loadbalancer, TLS, Geo-IP-ACLs (Maps), SPOE für WAF
