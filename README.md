@@ -65,10 +65,20 @@ Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Relo
 
 ## Geo-Manager
 
-- **Master (Prio 1)**: Lädt periodisch die Geo-Quelle, prüft Syntax (haproxy -c), Größe und Anchor-IPs, schreibt Maps und löst Reload aus. Setzt danach `validated_at`.
-- **Follower (Prio 2/3)**: Fragen den Master per HTTP (`/geo/status`) ab und übernehmen eine neue Map erst, wenn sie beim Master seit 48h (Prio 2) bzw. 96h (Prio 3) fehlerfrei aktiv ist.
+- **Master (Prio 1)**: Lädt periodisch die Geo-Quelle (einstellbar via `FETCH_INTERVAL_HOURS`), prüft Syntax (haproxy -c), Größe und Anchor-IPs, schreibt Maps und löst Reload aus. Setzt danach `validated_at`. Bei Fehlschlag: konfigurierbare Retries mit Wartezeit, danach optional Mail-Benachrichtigung (z. B. mailcow).
+- **Follower (Prio 2/3)**: Fragen den Master per HTTP (`/geo/status`) ab und übernehmen eine neue Map erst, wenn sie beim Master seit 48h (Prio 2) bzw. 96h (Prio 3) fehlerfrei aktiv ist. Ebenfalls Retries und Mail bei anhaltendem Fehlschlag.
+- **Cluster-Health**: Wöchentlich (oder per `CLUSTER_HEALTH_INTERVAL_HOURS`) werden alle Mesh-Knoten angefragt; Latenz und Offline-Phasen werden gespeichert und über `/cluster` bzw. `/metrics` (Prometheus) bereitgestellt.
 
-Status-Endpunkt: `http://<host>:8080/geo/status` (JSON: `node_prio`, `validated_at`, …).
+**HTTP-Endpunkte** (Port 8080, konfigurierbar mit `GEO_STATUS_PORT`):
+
+| Pfad | Beschreibung |
+|------|--------------|
+| `GET /health` | Einfacher Liveness-Check (200 OK, Body „OK“) – z. B. für Load-Balancer oder Monitoring. |
+| `GET /geo/status` | JSON: `node_prio`, `validated_at`, `map_version`. |
+| `GET /cluster` | JSON: letzter Cluster-Probe-Stand (Knoten, Latenz, Offline-Zusammenfassung). |
+| `GET /metrics` | Prometheus-Text-Format (Cluster-Erreichbarkeit, Latenz, Zeitstempel). |
+
+**Stabilität:** Kein Absturz bei Netzausfall oder Mail-/SMTP-Fehlern; Retries mit Wartezeit vor Benachrichtigung. Optional IPv6-Unterstützung über `GEO_BLOCKS_IPV6_URL` (Zwei-Dateien-Quelle).
 
 ## Tests
 

@@ -9,23 +9,44 @@ import ipaddress
 import logging
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def download_url(url: str, timeout: int = 60) -> bytes:
-    """Download URL or read local file (file://). Returns raw bytes."""
+def download_url(
+    url: str,
+    timeout: int = 60,
+    retries: int = 1,
+    retry_delay_sec: float = 0.0,
+) -> bytes:
+    """
+    Download URL or read local file (file://). Returns raw bytes.
+    For http(s): on failure retries up to retries times, waiting retry_delay_sec between attempts.
+    Raises on final failure (caller can catch and e.g. send mail).
+    """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme == "file":
         path = urllib.parse.unquote(parsed.path)
         with open(path, "rb") as f:
             return f.read()
-    req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    last_err: Optional[Exception] = None
+    for attempt in range(max(1, retries)):
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            last_err = e
+            if attempt < max(1, retries) - 1 and retry_delay_sec > 0:
+                logger.warning("Download attempt %s failed: %s; retry in %.0fs", attempt + 1, e, retry_delay_sec)
+                time.sleep(retry_delay_sec)
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("download_url: no attempt ran")
 
 
 def parse_country_blocks_csv(content: bytes) -> List[Tuple[str, int]]:
@@ -128,7 +149,10 @@ def build_whitelist_map(anchor_ips: List[str]) -> str:
 def fetch_geo_csv_to_map(
     blocks_url: str,
     locations_url: str,
+    blocks_ipv6_url: Optional[str] = None,
     timeout: int = 60,
+    retries: int = 1,
+    retry_delay_sec: float = 0.0,
     chunk_size: int = 0,
     sleep_after_chunk_ms: int = 0,
 ) -> str:
@@ -136,11 +160,27 @@ def fetch_geo_csv_to_map(
     Fetch both CSVs from URLs and return HAProxy geo map content.
     blocks_url: GeoLite2-Country-Blocks-IPv4.csv
     locations_url: GeoLite2-Country-Locations-en.csv
+    blocks_ipv6_url: optional GeoLite2-Country-Blocks-IPv6.csv; merged into one map (IPv4+IPv6).
     """
-    blocks_content = download_url(blocks_url, timeout=timeout)
-    locations_content = download_url(locations_url, timeout=timeout)
+    blocks_content = download_url(
+        blocks_url, timeout=timeout, retries=retries, retry_delay_sec=retry_delay_sec
+    )
+    locations_content = download_url(
+        locations_url, timeout=timeout, retries=retries, retry_delay_sec=retry_delay_sec
+    )
     blocks = parse_country_blocks_csv(blocks_content)
     locations = parse_country_locations_csv(locations_content)
+    if blocks_ipv6_url:
+        try:
+            ipv6_content = download_url(
+                blocks_ipv6_url,
+                timeout=timeout,
+                retries=retries,
+                retry_delay_sec=retry_delay_sec,
+            )
+            blocks.extend(parse_country_blocks_csv(ipv6_content))
+        except Exception as e:
+            logger.warning("IPv6 blocks download failed (continuing with IPv4 only): %s", e)
     return build_geo_map(
         blocks,
         locations,
@@ -152,6 +192,8 @@ def fetch_geo_csv_to_map(
 def fetch_geo_from_single_url(
     url: str,
     timeout: int = 60,
+    retries: int = 1,
+    retry_delay_sec: float = 0.0,
     chunk_size: int = 0,
     sleep_after_chunk_ms: int = 0,
 ) -> str:
@@ -159,7 +201,9 @@ def fetch_geo_from_single_url(
     If GEO_SOURCE_URL points to a single CSV that already has network,country columns,
     use this. Otherwise use fetch_geo_csv_to_map with GEO_BLOCKS_URL and GEO_LOCATIONS_URL.
     """
-    content = download_url(url, timeout=timeout)
+    content = download_url(
+        url, timeout=timeout, retries=retries, retry_delay_sec=retry_delay_sec
+    )
     return _convert_simple_csv_to_map(
         content,
         chunk_size=chunk_size,

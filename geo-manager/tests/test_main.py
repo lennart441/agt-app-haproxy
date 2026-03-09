@@ -33,6 +33,90 @@ def test_geo_status_handler_404():
     handler.send_error.assert_called_once_with(404)
 
 
+def test_health_handler_200():
+    """GET /health returns 200 OK."""
+    handler = MagicMock()
+    handler.path = "/health"
+    handler.server = MagicMock()
+    handler._send_health = lambda: GeoStatusHandler._send_health(handler)
+    handler.wfile = MagicMock()
+    GeoStatusHandler.do_GET(handler)
+    handler.send_response.assert_called_once_with(200)
+    handler.wfile.write.assert_called_once_with(b"OK")
+
+
+def test_metrics_handler_200():
+    """GET /metrics returns Prometheus text."""
+    handler = MagicMock()
+    handler.path = "/metrics"
+    handler.server = MagicMock()
+    handler._send_metrics = lambda: GeoStatusHandler._send_metrics(handler)
+    handler.wfile = MagicMock()
+    with patch("geo_manager.main.get_cluster_health_state") as mock_get:
+        mock_get.return_value = None
+        GeoStatusHandler.do_GET(handler)
+    handler.send_response.assert_called_once_with(200)
+    handler.wfile.write.assert_called_once_with(b"")
+
+
+def test_metrics_handler_200_with_state():
+    """GET /metrics with cluster state returns Prometheus body."""
+    from geo_manager.cluster_health import ClusterHealthState, NodeProbeResult
+    state = ClusterHealthState()
+    state.update([NodeProbeResult("1.2.3.4", "2026-01-01T12:00:00Z", True, 2.0)])
+    handler = MagicMock()
+    handler.path = "/metrics"
+    handler.server = MagicMock()
+    handler._send_metrics = lambda: GeoStatusHandler._send_metrics(handler)
+    handler.wfile = MagicMock()
+    with patch("geo_manager.main.get_cluster_health_state") as mock_get:
+        mock_get.return_value = state
+        GeoStatusHandler.do_GET(handler)
+    handler.send_response.assert_called_once_with(200)
+    body = handler.wfile.write.call_args[0][0]
+    assert b"geo_cluster_node_reachable" in body
+
+
+def test_cluster_handler_200():
+    """GET /cluster returns JSON cluster health."""
+    handler = MagicMock()
+    handler.path = "/cluster"
+    handler.server = MagicMock()
+    config = Config.from_env()
+    handler.server.config = config
+    handler._send_cluster = lambda c: GeoStatusHandler._send_cluster(handler, c)
+    handler.wfile = MagicMock()
+    with patch("geo_manager.main.get_cluster_health_state") as mock_get:
+        mock_get.return_value = None
+        GeoStatusHandler.do_GET(handler)
+    handler.send_response.assert_called_once_with(200)
+    body = handler.wfile.write.call_args[0][0]
+    data = json.loads(body.decode("utf-8"))
+    assert "nodes" in data
+    assert "last_probe_at" in data
+
+
+def test_cluster_handler_200_with_state():
+    """GET /cluster with state returns full JSON."""
+    from geo_manager.cluster_health import ClusterHealthState, NodeProbeResult
+    state = ClusterHealthState()
+    state.update([NodeProbeResult("172.20.0.1", "2026-01-01T12:00:00Z", True, 1.5)])
+    handler = MagicMock()
+    handler.path = "/cluster"
+    handler.server = MagicMock()
+    config = Config.from_env()
+    handler.server.config = config
+    handler._send_cluster = lambda c: GeoStatusHandler._send_cluster(handler, c)
+    handler.wfile = MagicMock()
+    with patch("geo_manager.main.get_cluster_health_state") as mock_get:
+        mock_get.return_value = state
+        GeoStatusHandler.do_GET(handler)
+    body = handler.wfile.write.call_args[0][0]
+    data = json.loads(body.decode("utf-8"))
+    assert len(data["nodes"]) == 1
+    assert data["nodes"][0]["latency_ms"] == 1.5
+
+
 def test_geo_status_handler_200():
     """Handler returns JSON for GET /geo/status."""
     handler = MagicMock()
@@ -41,6 +125,8 @@ def test_geo_status_handler_200():
     handler.server.config = MagicMock()
     handler.server.config.node_prio = 1
     handler.server.config.node_name = "agt-1"
+    handler._send_geo_status = lambda c: GeoStatusHandler._send_geo_status(handler, c)
+    handler.wfile = MagicMock()
     set_validated_at(None)
     GeoStatusHandler.do_GET(handler)
     handler.send_response.assert_called_once_with(200)
@@ -61,6 +147,8 @@ def test_geo_status_handler_200_with_validated_at():
     handler.server.config = MagicMock()
     handler.server.config.node_prio = 1
     handler.server.config.node_name = "agt-1"
+    handler._send_geo_status = lambda c: GeoStatusHandler._send_geo_status(handler, c)
+    handler.wfile = MagicMock()
     set_validated_at(datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc))
     GeoStatusHandler.do_GET(handler)
     write_calls = handler.wfile.write.call_args_list
@@ -138,6 +226,22 @@ def test_main_starts_follower_thread_when_not_master():
                     main()
     mock_thread.assert_called_once()
     assert mock_thread.call_args[1]["target"].__name__ == "run_follower_loop"
+
+
+def test_main_starts_cluster_health_thread_when_mesh_nodes_set():
+    with patch("geo_manager.main.HTTPServer") as mock_http:
+        with patch("geo_manager.main.threading.Thread") as mock_thread:
+            mock_server = MagicMock()
+            mock_http.return_value = mock_server
+            mock_server.serve_forever.side_effect = StopIteration("stop")
+            config = Config.from_env()
+            config.mesh_nodes = ["172.20.0.1"]
+            with patch("geo_manager.main.Config.from_env", return_value=config):
+                with pytest.raises(StopIteration):
+                    from geo_manager.main import main
+                    main()
+    assert mock_thread.call_count == 2
+    assert mock_thread.call_args_list[1][1]["target"].__name__ == "run_cluster_health_loop"
 
 
 def test_main_module_main_block():
@@ -226,7 +330,8 @@ def test_master_fetch_validate_activate_empty_content(mock_single):
     mock_single.return_value = "   \n"
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
-    _master_fetch_validate_activate(config)
+    with pytest.raises(RuntimeError, match="empty"):
+        _master_fetch_validate_activate(config)
 
 
 @patch("geo_manager.main.validate_size")
@@ -236,7 +341,8 @@ def test_master_fetch_validate_activate_size_fail(mock_single, mock_size):
     mock_size.return_value = False
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
-    _master_fetch_validate_activate(config)
+    with pytest.raises(RuntimeError, match="Size check"):
+        _master_fetch_validate_activate(config)
 
 
 @patch("geo_manager.main.validate_anchors")
@@ -248,7 +354,8 @@ def test_master_fetch_validate_activate_anchor_fail(mock_single, mock_size, mock
     mock_anchors.return_value = False
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
-    _master_fetch_validate_activate(config)
+    with pytest.raises(RuntimeError, match="Anchor check"):
+        _master_fetch_validate_activate(config)
 
 
 @patch("geo_manager.main.validate_syntax")
@@ -267,7 +374,8 @@ def test_master_fetch_validate_activate_syntax_fail_restores_backup(
     config.map_dir = str(tmp_path)
     config.haproxy_cfg_path = str(tmp_path / "x.cfg")
     config.anchor_ips = []
-    _master_fetch_validate_activate(config)
+    with pytest.raises(RuntimeError, match="Syntax check"):
+        _master_fetch_validate_activate(config)
     assert (tmp_path / "geo.map").read_text() == "old"
 
 
@@ -292,7 +400,8 @@ def test_master_fetch_validate_activate_reload_fails(
     config.map_dir = str(tmp_path)
     config.haproxy_cfg_path = str(tmp_path / "x.cfg")
     config.anchor_ips = []
-    _master_fetch_validate_activate(config)
+    with pytest.raises(RuntimeError, match="reload"):
+        _master_fetch_validate_activate(config)
     mock_reload.assert_called_once()
 
 
@@ -338,6 +447,95 @@ def test_run_follower_loop_exception_logged_and_continues(mock_get, mock_should,
         with pytest.raises(StopIteration):
             run_follower_loop(config)
     mock_activate.assert_not_called()
+
+
+@patch("geo_manager.main.send_failure_mail")
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.time.sleep")
+def test_run_master_loop_failure_after_retries_sends_mail(mock_sleep, mock_activate, mock_mail, monkeypatch):
+    monkeypatch.setenv("GEO_SOURCE_URL", "http://example.com/geo.csv")
+    monkeypatch.setenv("FETCH_RETRIES", "2")
+    monkeypatch.setenv("FETCH_RETRY_DELAY_SEC", "0.1")
+    config = Config.from_env()
+    mock_activate.side_effect = RuntimeError("fetch failed")
+    mock_sleep.side_effect = [None, StopIteration]  # retry_delay, then interval_sec
+    with pytest.raises(StopIteration):
+        run_master_loop(config)
+    assert mock_activate.call_count == 2
+    mock_mail.assert_called_once()
+
+
+def test_run_cluster_health_loop_empty_mesh_returns_immediately():
+    from geo_manager.main import run_cluster_health_loop
+    config = Config.from_env()
+    config.mesh_nodes = []
+    run_cluster_health_loop(config)
+
+
+@patch("geo_manager.main.send_failure_mail")
+def test_notify_fetch_failure_handles_mail_exception(mock_mail):
+    from geo_manager.main import _notify_fetch_failure
+    mock_mail.side_effect = RuntimeError("smtp down")
+    config = Config.from_env()
+    config.mail_enabled = True
+    config.mail_host = "x"
+    config.mail_to = ["a@b.com"]
+    _notify_fetch_failure(config, "error detail")
+    mock_mail.assert_called_once()
+
+
+@patch("geo_manager.main.run_cluster_probe")
+@patch("geo_manager.main.time.sleep")
+def test_run_cluster_health_loop_updates_state(mock_sleep, mock_probe):
+    from geo_manager.cluster_health import NodeProbeResult, get_cluster_health_state
+    mock_probe.return_value = [
+        NodeProbeResult("172.20.0.1", "2026-01-01T12:00:00Z", True, 1.0),
+    ]
+    mock_sleep.side_effect = [None, StopIteration]
+    config = Config.from_env()
+    config.mesh_nodes = ["172.20.0.1"]
+    config.cluster_health_interval_hours = 0.001
+    with pytest.raises(StopIteration):
+        from geo_manager.main import run_cluster_health_loop
+        run_cluster_health_loop(config)
+    mock_probe.assert_called()
+    assert get_cluster_health_state() is not None
+
+
+@patch("geo_manager.main.run_cluster_probe")
+@patch("geo_manager.main.time.sleep")
+def test_run_cluster_health_loop_exception_logs_and_continues(mock_sleep, mock_probe):
+    from geo_manager.main import run_cluster_health_loop
+    mock_probe.side_effect = [RuntimeError("probe error"), StopIteration]
+    mock_sleep.side_effect = [None, StopIteration]
+    config = Config.from_env()
+    config.mesh_nodes = ["172.20.0.1"]
+    config.cluster_health_interval_hours = 0.001
+    with pytest.raises(StopIteration):
+        run_cluster_health_loop(config)
+    assert mock_probe.call_count == 2
+
+
+@patch("geo_manager.main.send_failure_mail")
+@patch("geo_manager.main._master_fetch_validate_activate")
+@patch("geo_manager.main.should_follower_activate")
+@patch("geo_manager.main.get_master_validated_at")
+@patch("geo_manager.main.time.sleep")
+def test_run_follower_loop_failure_after_retries_sends_mail(mock_sleep, mock_get, mock_should, mock_activate, mock_mail):
+    from datetime import timedelta
+    config = Config.from_env()
+    config.node_prio = 2
+    config.mesh_nodes = ["172.20.0.1"]
+    config.fetch_retries = 2
+    config.fetch_retry_delay_sec = 0.01
+    mock_get.return_value = ("172.20.0.1", datetime.now(timezone.utc) - timedelta(hours=50))
+    mock_should.return_value = True
+    mock_activate.side_effect = RuntimeError("fetch failed")
+    mock_sleep.side_effect = [None, None, StopIteration]  # poll_interval, retry_delay, next poll
+    with pytest.raises(StopIteration):
+        run_follower_loop(config)
+    assert mock_activate.call_count == 2
+    mock_mail.assert_called_once()
 
 
 @patch("geo_manager.main._master_fetch_validate_activate")

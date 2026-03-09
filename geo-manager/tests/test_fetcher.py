@@ -1,7 +1,7 @@
 """Tests for geo_manager.fetcher."""
 import io
 import tempfile
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -239,3 +239,59 @@ def test_fetch_geo_csv_to_map_chunk_params(mock_dl):
         )
     assert "1.0.0.0/24\tDE" in out
     assert "2.0.0.0/24\tUS" in out
+
+
+def test_download_url_retries_then_succeeds():
+    resp = MagicMock()
+    resp.read.return_value = b"data"
+    ctx = MagicMock()
+    ctx.__enter__.return_value = resp
+    ctx.__exit__.return_value = None
+    with patch("urllib.request.urlopen") as m:
+        m.side_effect = [OSError("net"), OSError("net"), ctx]
+        data = download_url("http://example.com/x", timeout=5, retries=3, retry_delay_sec=0.01)
+    assert data == b"data"
+
+
+def test_download_url_retries_all_fail():
+    with patch("urllib.request.urlopen") as m:
+        m.side_effect = OSError("net")
+        with pytest.raises(OSError):
+            download_url("http://example.com/x", timeout=5, retries=2, retry_delay_sec=0.01)
+
+
+def test_download_url_no_attempt_ran_raises():
+    """Cover defensive raise when loop runs zero times."""
+    with patch("geo_manager.fetcher.range", lambda *a: iter([])):
+        with pytest.raises(RuntimeError, match="no attempt ran"):
+            download_url("http://example.com/x", retries=1)
+
+
+@patch("geo_manager.fetcher.download_url")
+def test_fetch_geo_csv_to_map_with_ipv6_url(mock_dl):
+    mock_dl.side_effect = [
+        b"network,geoname_id\n1.0.0.0/24,1",
+        b"geoname_id,country_iso_code\n1,DE",
+        b"network,geoname_id\n2001:db8::/32,1",
+    ]
+    out = fetch_geo_csv_to_map(
+        "http://a/blocks.csv", "http://a/loc.csv",
+        blocks_ipv6_url="http://a/blocks-ipv6.csv"
+    )
+    assert "1.0.0.0/24\tDE" in out
+    assert "2001:db8::/32\tDE" in out
+    assert mock_dl.call_count == 3
+
+
+@patch("geo_manager.fetcher.download_url")
+def test_fetch_geo_csv_to_map_ipv6_download_fails_continues(mock_dl):
+    mock_dl.side_effect = [
+        b"network,geoname_id\n1.0.0.0/24,1",
+        b"geoname_id,country_iso_code\n1,DE",
+        OSError("ipv6 unreachable"),
+    ]
+    out = fetch_geo_csv_to_map(
+        "http://a/blocks.csv", "http://a/loc.csv",
+        blocks_ipv6_url="http://a/ipv6.csv"
+    )
+    assert "1.0.0.0/24\tDE" in out

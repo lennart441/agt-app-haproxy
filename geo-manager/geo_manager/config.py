@@ -3,7 +3,7 @@ Configuration from environment variables for Geo-Manager.
 """
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 # Allowed country codes for geo (DE, EU border regions). Anchor IPs must resolve to these.
@@ -19,17 +19,32 @@ class Config:
     mesh_nodes: List[str]
     anchor_ips: List[str]
     geo_source_url: str
+    geo_blocks_ipv6_url: Optional[str]  # optional IPv6 blocks CSV, merged into geo.map
     map_dir: str
     haproxy_cfg_path: str
     haproxy_socket: str
     stage_delay_prio2_hours: int
     stage_delay_prio3_hours: int
     fetch_interval_hours: float
+    fetch_retries: int
+    fetch_retry_delay_sec: float
     status_port: int
     size_deviation_threshold: float  # 0.9 = reject if new < 90% of old
-    build_nice_level: int  # process nice (e.g. 10 = lower CPU priority)
-    build_chunk_size: int  # process N lines/blocks per chunk, then sleep
-    build_sleep_after_chunk_ms: int  # ms to sleep after each chunk to yield CPU
+    build_nice_level: int
+    build_chunk_size: int
+    build_sleep_after_chunk_ms: int
+    # Mail (mailcow / SMTP)
+    mail_enabled: bool
+    mail_host: str
+    mail_port: int
+    mail_use_tls: bool
+    mail_user: str
+    mail_password: str
+    mail_from: str
+    mail_to: List[str]
+    # Cluster health (weekly probe, latency, offline tracking)
+    cluster_health_interval_hours: float
+    cluster_health_timeout_sec: float
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -80,12 +95,40 @@ class Config:
         except ValueError:
             build_sleep_ms = 50
 
+        try:
+            fetch_retries = int(os.environ.get("FETCH_RETRIES", "3"))
+        except ValueError:
+            fetch_retries = 3
+        try:
+            fetch_retry_delay = float(os.environ.get("FETCH_RETRY_DELAY_SEC", "60.0"))
+        except ValueError:
+            fetch_retry_delay = 60.0
+
+        mail_enabled = os.environ.get("MAIL_ENABLED", "").strip().lower() in ("1", "true", "yes")
+        mail_to_str = os.environ.get("MAIL_TO", "").strip()
+        mail_to = [s.strip() for s in mail_to_str.split(",") if s.strip()]
+
+        try:
+            cluster_interval = float(os.environ.get("CLUSTER_HEALTH_INTERVAL_HOURS", "168.0"))  # weekly
+        except ValueError:
+            cluster_interval = 168.0
+        try:
+            cluster_timeout = float(os.environ.get("CLUSTER_HEALTH_TIMEOUT_SEC", "5.0"))
+        except ValueError:
+            cluster_timeout = 5.0
+
+        try:
+            mail_port = int(os.environ.get("MAIL_PORT", "587"))
+        except ValueError:
+            mail_port = 587
+
         return cls(
             node_name=os.environ.get("NODE_NAME", "agt-1"),
             node_prio=node_prio,
             mesh_nodes=mesh_nodes,
             anchor_ips=anchor_ips,
             geo_source_url=os.environ.get("GEO_SOURCE_URL", "").strip(),
+            geo_blocks_ipv6_url=os.environ.get("GEO_BLOCKS_IPV6_URL", "").strip() or None,
             map_dir=os.environ.get("MAP_DIR", "/usr/local/etc/haproxy/maps"),
             haproxy_cfg_path=os.environ.get(
                 "HAPROXY_CFG_PATH", "/usr/local/etc/haproxy/haproxy.cfg"
@@ -94,11 +137,23 @@ class Config:
             stage_delay_prio2_hours=delay2,
             stage_delay_prio3_hours=delay3,
             fetch_interval_hours=fetch_interval,
+            fetch_retries=max(1, fetch_retries),
+            fetch_retry_delay_sec=max(1.0, fetch_retry_delay),
             status_port=status_port,
             size_deviation_threshold=threshold,
             build_nice_level=build_nice,
             build_chunk_size=build_chunk,
             build_sleep_after_chunk_ms=build_sleep_ms,
+            mail_enabled=mail_enabled,
+            mail_host=os.environ.get("MAIL_HOST", "").strip(),
+            mail_port=mail_port,
+            mail_use_tls=os.environ.get("MAIL_USE_TLS", "true").strip().lower() in ("1", "true", "yes"),
+            mail_user=os.environ.get("MAIL_USER", "").strip(),
+            mail_password=os.environ.get("MAIL_PASSWORD", "").strip(),
+            mail_from=os.environ.get("MAIL_FROM", "").strip(),
+            mail_to=mail_to,
+            cluster_health_interval_hours=max(0.25, cluster_interval),
+            cluster_health_timeout_sec=max(1.0, cluster_timeout),
         )
 
     def stage_delay_hours_for_prio(self, prio: int) -> int:

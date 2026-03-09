@@ -19,17 +19,23 @@ def test_config_from_env_defaults():
     assert config.mesh_nodes == []
     assert config.anchor_ips == []
     assert config.geo_source_url == ""
+    assert config.geo_blocks_ipv6_url is None
     assert config.map_dir == "/usr/local/etc/haproxy/maps"
     assert "haproxy.cfg" in config.haproxy_cfg_path
     assert config.haproxy_socket == "/var/run/haproxy.sock"
     assert config.stage_delay_prio2_hours == 48
     assert config.stage_delay_prio3_hours == 96
     assert config.fetch_interval_hours == 24.0
+    assert config.fetch_retries >= 1
+    assert config.fetch_retry_delay_sec >= 1.0
     assert config.status_port == 8080
     assert config.size_deviation_threshold == 0.9
     assert config.build_nice_level == 10
     assert config.build_chunk_size == 5000
     assert config.build_sleep_after_chunk_ms == 50
+    assert config.mail_enabled is False
+    assert config.cluster_health_interval_hours >= 0.25
+    assert config.cluster_health_timeout_sec >= 1.0
 
 
 def test_config_from_env_custom(monkeypatch):
@@ -116,3 +122,58 @@ def test_am_i_master():
     assert config.am_i_master() is True
     config.node_prio = 2
     assert config.am_i_master() is False
+
+
+def test_config_mail_and_cluster_defaults(monkeypatch):
+    monkeypatch.setenv("MAIL_ENABLED", "true")
+    monkeypatch.setenv("MAIL_HOST", "smtp.example.com")
+    monkeypatch.setenv("MAIL_PORT", "25")
+    monkeypatch.setenv("MAIL_USE_TLS", "false")
+    monkeypatch.setenv("MAIL_FROM", "geo@example.com")
+    monkeypatch.setenv("MAIL_TO", "a@x.com,b@x.com")
+    monkeypatch.setenv("CLUSTER_HEALTH_INTERVAL_HOURS", "24")
+    monkeypatch.setenv("CLUSTER_HEALTH_TIMEOUT_SEC", "10")
+    config = Config.from_env()
+    assert config.mail_enabled is True
+    assert config.mail_host == "smtp.example.com"
+    assert config.mail_port == 25
+    assert config.mail_use_tls is False
+    assert config.mail_to == ["a@x.com", "b@x.com"]
+    assert config.cluster_health_interval_hours == 24.0
+    assert config.cluster_health_timeout_sec == 10.0
+
+
+def test_config_geo_blocks_ipv6_url(monkeypatch):
+    monkeypatch.setenv("GEO_BLOCKS_IPV6_URL", "https://example.com/ipv6.csv")
+    config = Config.from_env()
+    assert config.geo_blocks_ipv6_url == "https://example.com/ipv6.csv"
+
+
+def test_config_fetch_retries_and_delay(monkeypatch):
+    monkeypatch.setenv("FETCH_RETRIES", "5")
+    monkeypatch.setenv("FETCH_RETRY_DELAY_SEC", "120")
+    config = Config.from_env()
+    assert config.fetch_retries == 5
+    assert config.fetch_retry_delay_sec == 120.0
+
+
+def test_config_invalid_fetch_retries_and_delay_fallback(monkeypatch):
+    monkeypatch.setenv("FETCH_RETRIES", "x")
+    monkeypatch.setenv("FETCH_RETRY_DELAY_SEC", "y")
+    config = Config.from_env()
+    assert config.fetch_retries == 3
+    assert config.fetch_retry_delay_sec == 60.0
+
+
+def test_config_invalid_cluster_health_fallback(monkeypatch):
+    monkeypatch.setenv("CLUSTER_HEALTH_INTERVAL_HOURS", "z")
+    monkeypatch.setenv("CLUSTER_HEALTH_TIMEOUT_SEC", "w")
+    config = Config.from_env()
+    assert config.cluster_health_interval_hours == 168.0
+    assert config.cluster_health_timeout_sec == 5.0
+
+
+def test_config_invalid_mail_port_fallback(monkeypatch):
+    monkeypatch.setenv("MAIL_PORT", "not_a_number")
+    config = Config.from_env()
+    assert config.mail_port == 587
