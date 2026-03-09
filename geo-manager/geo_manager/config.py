@@ -27,6 +27,9 @@ class Config:
     fetch_interval_hours: float
     status_port: int
     size_deviation_threshold: float  # 0.9 = reject if new < 90% of old
+    build_nice_level: int  # process nice (e.g. 10 = lower CPU priority)
+    build_chunk_size: int  # process N lines/blocks per chunk, then sleep
+    build_sleep_after_chunk_ms: int  # ms to sleep after each chunk to yield CPU
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -64,6 +67,19 @@ class Config:
         except ValueError:
             status_port = 8080
 
+        try:
+            build_nice = int(os.environ.get("BUILD_NICE_LEVEL", "10"))
+        except ValueError:
+            build_nice = 10
+        try:
+            build_chunk = int(os.environ.get("BUILD_CHUNK_SIZE", "5000"))
+        except ValueError:
+            build_chunk = 5000
+        try:
+            build_sleep_ms = int(os.environ.get("BUILD_SLEEP_AFTER_CHUNK_MS", "50"))
+        except ValueError:
+            build_sleep_ms = 50
+
         return cls(
             node_name=os.environ.get("NODE_NAME", "agt-1"),
             node_prio=node_prio,
@@ -80,6 +96,9 @@ class Config:
             fetch_interval_hours=fetch_interval,
             status_port=status_port,
             size_deviation_threshold=threshold,
+            build_nice_level=build_nice,
+            build_chunk_size=build_chunk,
+            build_sleep_after_chunk_ms=build_sleep_ms,
         )
 
     def stage_delay_hours_for_prio(self, prio: int) -> int:

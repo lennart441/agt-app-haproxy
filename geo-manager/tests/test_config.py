@@ -27,6 +27,9 @@ def test_config_from_env_defaults():
     assert config.fetch_interval_hours == 24.0
     assert config.status_port == 8080
     assert config.size_deviation_threshold == 0.9
+    assert config.build_nice_level == 10
+    assert config.build_chunk_size == 5000
+    assert config.build_sleep_after_chunk_ms == 50
 
 
 def test_config_from_env_custom(monkeypatch):
@@ -39,6 +42,9 @@ def test_config_from_env_custom(monkeypatch):
     monkeypatch.setenv("STAGE_DELAY_PRIO3_HOURS", "72")
     monkeypatch.setenv("GEO_STATUS_PORT", "9090")
     monkeypatch.setenv("SIZE_DEVIATION_THRESHOLD", "0.85")
+    monkeypatch.setenv("BUILD_NICE_LEVEL", "15")
+    monkeypatch.setenv("BUILD_CHUNK_SIZE", "2000")
+    monkeypatch.setenv("BUILD_SLEEP_AFTER_CHUNK_MS", "100")
 
     config = Config.from_env()
     assert config.node_name == "agt-2"
@@ -50,6 +56,19 @@ def test_config_from_env_custom(monkeypatch):
     assert config.stage_delay_prio3_hours == 72
     assert config.status_port == 9090
     assert config.size_deviation_threshold == 0.85
+    assert config.build_nice_level == 15
+    assert config.build_chunk_size == 2000
+    assert config.build_sleep_after_chunk_ms == 100
+
+
+def test_config_invalid_build_params_fallback(monkeypatch):
+    monkeypatch.setenv("BUILD_NICE_LEVEL", "x")
+    monkeypatch.setenv("BUILD_CHUNK_SIZE", "y")
+    monkeypatch.setenv("BUILD_SLEEP_AFTER_CHUNK_MS", "z")
+    config = Config.from_env()
+    assert config.build_nice_level == 10
+    assert config.build_chunk_size == 5000
+    assert config.build_sleep_after_chunk_ms == 50
 
 
 def test_config_invalid_prio_fallback(monkeypatch):

@@ -73,6 +73,10 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
 
 def run_master_loop(config: Config) -> None:
     """Master: periodically fetch, validate, activate."""
+    try:
+        os.nice(config.build_nice_level)
+    except (AttributeError, OSError):
+        pass
     if not config.geo_source_url:
         logger.warning("GEO_SOURCE_URL not set; master will not fetch")
         return
@@ -90,9 +94,18 @@ def _master_fetch_validate_activate(config: Config) -> None:
     blocks_url = os.environ.get("GEO_BLOCKS_URL", "").strip()
     locations_url = os.environ.get("GEO_LOCATIONS_URL", "").strip()
     if blocks_url and locations_url:
-        geo_content = fetch_geo_csv_to_map(blocks_url, locations_url)
+        geo_content = fetch_geo_csv_to_map(
+            blocks_url,
+            locations_url,
+            chunk_size=config.build_chunk_size,
+            sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
+        )
     else:
-        geo_content = fetch_geo_from_single_url(config.geo_source_url)
+        geo_content = fetch_geo_from_single_url(
+            config.geo_source_url,
+            chunk_size=config.build_chunk_size,
+            sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
+        )
 
     if not geo_content.strip():
         logger.error("Fetched geo content is empty")
@@ -111,7 +124,13 @@ def _master_fetch_validate_activate(config: Config) -> None:
 
     if os.path.isfile(geo_map_path):
         os.replace(geo_map_path, backup_path)
-    write_maps(config.map_dir, geo_content, whitelist_content)
+    write_maps(
+        config.map_dir,
+        geo_content,
+        whitelist_content,
+        chunk_size=config.build_chunk_size,
+        sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
+    )
 
     if not validate_syntax(config.haproxy_cfg_path, config.map_dir):
         logger.error("Syntax check failed; restoring backup")
@@ -131,6 +150,10 @@ def _master_fetch_validate_activate(config: Config) -> None:
 
 def run_follower_loop(config: Config) -> None:
     """Follower: poll master's validated_at; when delay elapsed, fetch/validate/activate."""
+    try:
+        os.nice(config.build_nice_level)
+    except (AttributeError, OSError):
+        pass
     if config.node_prio == 1:
         return
     delay_hours = config.stage_delay_hours_for_prio(config.node_prio)

@@ -89,6 +89,41 @@ def test_build_geo_map_invalid_country_len_becomes_default():
     assert "10.0.0.0/8\tXX" in out
 
 
+def test_build_geo_map_chunked_same_result():
+    """Chunked build produces same output as non-chunked."""
+    blocks = [("10.0.0.0/8", 1), ("192.168.0.0/24", 2)]
+    locations = {1: "DE", 2: "AT"}
+    with patch("geo_manager.fetcher.time.sleep"):
+        out = build_geo_map(
+            blocks, locations, chunk_size=1, sleep_after_chunk_ms=1
+        )
+    assert "10.0.0.0/8\tDE" in out
+    assert "192.168.0.0/24\tAT" in out
+
+
+def test_build_geo_map_chunked_with_default_country():
+    """Chunked build with missing/invalid location uses default_country."""
+    blocks = [("10.0.0.0/8", 999)]  # 999 not in locations
+    locations = {}
+    out = build_geo_map(
+        blocks, locations, default_country="XX",
+        chunk_size=1, sleep_after_chunk_ms=0
+    )
+    assert "10.0.0.0/8\tXX" in out
+
+
+def test_build_geo_map_chunked_with_sleep():
+    """Chunked build with sleep_after_chunk_ms > 0 calls time.sleep."""
+    blocks = [("10.0.0.0/8", 1)]
+    locations = {1: "DE"}
+    with patch("geo_manager.fetcher.time.sleep") as mock_sleep:
+        out = build_geo_map(
+            blocks, locations, chunk_size=1, sleep_after_chunk_ms=50
+        )
+    assert "10.0.0.0/8\tDE" in out
+    mock_sleep.assert_called()
+
+
 def test_sort_key_network():
     assert _sort_key_network("10.0.0.0/8\tDE") != (0, 0)
     assert _sort_key_network("invalid\tXX") == (0, 0)
@@ -136,6 +171,18 @@ def test_write_maps(tmp_path):
     assert (tmp_path / "whitelist.map").read_text() == "8.8.8.8\t1\n"
 
 
+def test_write_maps_chunked_same_result(tmp_path):
+    """Chunked write produces same files as non-chunked."""
+    geo = "1.0.0.0/24\tDE\n2.0.0.0/24\tAT\n"
+    with patch("geo_manager.fetcher.time.sleep"):
+        write_maps(
+            str(tmp_path), geo, "8.8.8.8\t1\n",
+            chunk_size=1, sleep_after_chunk_ms=1
+        )
+    assert (tmp_path / "geo.map").read_text() == geo
+    assert (tmp_path / "whitelist.map").read_text() == "8.8.8.8\t1\n"
+
+
 def test_download_url():
     with patch("urllib.request.urlopen") as m:
         m.return_value.__enter__.return_value.read.return_value = b"data"
@@ -159,3 +206,28 @@ def test_fetch_geo_from_single_url(mock_dl):
     mock_dl.return_value = b"network,country_iso_code\n1.0.0.0/24,DE\n"
     out = fetch_geo_from_single_url("http://example.com/geo.csv")
     assert "1.0.0.0/24\tDE" in out
+
+
+def test_convert_simple_csv_to_map_chunked_same_result():
+    content = b"network,country_iso_code\n1.0.0.0/24,DE\n2.0.0.0/24,US\n"
+    with patch("geo_manager.fetcher.time.sleep"):
+        out = _convert_simple_csv_to_map(
+            content, chunk_size=1, sleep_after_chunk_ms=1
+        )
+    assert "1.0.0.0/24\tDE" in out
+    assert "2.0.0.0/24\tUS" in out
+
+
+@patch("geo_manager.fetcher.download_url")
+def test_fetch_geo_csv_to_map_chunk_params(mock_dl):
+    mock_dl.side_effect = [
+        b"network,geoname_id\n1.0.0.0/24,1\n2.0.0.0/24,2",
+        b"geoname_id,country_iso_code\n1,DE\n2,US",
+    ]
+    with patch("geo_manager.fetcher.time.sleep"):
+        out = fetch_geo_csv_to_map(
+            "http://a/blocks.csv", "http://a/loc.csv",
+            chunk_size=1, sleep_after_chunk_ms=1
+        )
+    assert "1.0.0.0/24\tDE" in out
+    assert "2.0.0.0/24\tUS" in out

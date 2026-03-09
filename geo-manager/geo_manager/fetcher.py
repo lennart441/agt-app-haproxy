@@ -7,6 +7,7 @@ import io
 import ipaddress
 import logging
 import os
+import time
 import urllib.request
 from typing import Dict, List, Tuple
 
@@ -56,21 +57,43 @@ def parse_country_locations_csv(content: bytes) -> Dict[int, str]:
     return result
 
 
+def _format_geo_line(
+    network: str,
+    geoname_id: int,
+    locations: Dict[int, str],
+    default_country: str,
+) -> str:
+    """Format one block line for geo map (shared by chunked and non-chunked path)."""
+    country = locations.get(geoname_id, default_country)
+    if not country or len(country) != 2:
+        country = default_country
+    return f"{network}\t{country}"
+
+
 def build_geo_map(
     blocks: List[Tuple[str, int]],
     locations: Dict[int, str],
     default_country: str = "XX",
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
 ) -> str:
     """
     Build HAProxy map_ip content: one line per network "network\tcountry_code".
     Sorted by network for deterministic output. Locations not found get default_country.
+    If chunk_size > 0, process blocks in chunks and sleep sleep_after_chunk_ms after each
+    chunk to yield CPU and avoid spiking the host.
     """
     lines: List[str] = []
-    for network, geoname_id in blocks:
-        country = locations.get(geoname_id, default_country)
-        if not country or len(country) != 2:
-            country = default_country
-        lines.append(f"{network}\t{country}")
+    if chunk_size <= 0:
+        for network, geoname_id in blocks:
+            lines.append(_format_geo_line(network, geoname_id, locations, default_country))
+    else:
+        for i in range(0, len(blocks), chunk_size):
+            chunk = blocks[i : i + chunk_size]
+            for network, geoname_id in chunk:
+                lines.append(_format_geo_line(network, geoname_id, locations, default_country))
+            if sleep_after_chunk_ms > 0:
+                time.sleep(sleep_after_chunk_ms / 1000.0)
     lines.sort(key=_sort_key_network)
     return "\n".join(lines) + "\n" if lines else ""
 
@@ -99,6 +122,8 @@ def fetch_geo_csv_to_map(
     blocks_url: str,
     locations_url: str,
     timeout: int = 60,
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
 ) -> str:
     """
     Fetch both CSVs from URLs and return HAProxy geo map content.
@@ -109,21 +134,40 @@ def fetch_geo_csv_to_map(
     locations_content = download_url(locations_url, timeout=timeout)
     blocks = parse_country_blocks_csv(blocks_content)
     locations = parse_country_locations_csv(locations_content)
-    return build_geo_map(blocks, locations)
+    return build_geo_map(
+        blocks,
+        locations,
+        chunk_size=chunk_size,
+        sleep_after_chunk_ms=sleep_after_chunk_ms,
+    )
 
 
-def fetch_geo_from_single_url(url: str, timeout: int = 60) -> str:
+def fetch_geo_from_single_url(
+    url: str,
+    timeout: int = 60,
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
+) -> str:
     """
     If GEO_SOURCE_URL points to a single CSV that already has network,country columns,
     use this. Otherwise use fetch_geo_csv_to_map with GEO_BLOCKS_URL and GEO_LOCATIONS_URL.
     """
     content = download_url(url, timeout=timeout)
-    return _convert_simple_csv_to_map(content)
+    return _convert_simple_csv_to_map(
+        content,
+        chunk_size=chunk_size,
+        sleep_after_chunk_ms=sleep_after_chunk_ms,
+    )
 
 
-def _convert_simple_csv_to_map(content: bytes) -> str:
+def _convert_simple_csv_to_map(
+    content: bytes,
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
+) -> str:
     """
     Convert a simple CSV with columns like network,country_code (or similar) to map.
+    If chunk_size > 0, build lines in chunks and sleep to yield CPU.
     """
     rows: List[Tuple[str, str]] = []
     reader = csv.DictReader(io.StringIO(content.decode("utf-8")))
@@ -134,7 +178,15 @@ def _convert_simple_csv_to_map(content: bytes) -> str:
             country = "XX"
         if network:
             rows.append((network, country))
-    lines = [f"{n}\t{c}" for n, c in rows]
+    if chunk_size <= 0:
+        lines = [f"{n}\t{c}" for n, c in rows]
+    else:
+        lines = []
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i : i + chunk_size]
+            lines.extend(f"{n}\t{c}" for n, c in chunk)
+            if sleep_after_chunk_ms > 0:
+                time.sleep(sleep_after_chunk_ms / 1000.0)
     lines.sort(key=_sort_key_network)
     return "\n".join(lines) + "\n" if lines else ""
 
@@ -145,13 +197,29 @@ def write_maps(
     whitelist_content: str,
     geo_path: str = "geo.map",
     whitelist_path: str = "whitelist.map",
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
 ) -> None:
-    """Write geo and whitelist map files to map_dir."""
+    """Write geo and whitelist map files to map_dir.
+    If chunk_size > 0, write geo file in chunks with sleep to avoid I/O spikes."""
     os.makedirs(map_dir, exist_ok=True)
     geo_file = os.path.join(map_dir, geo_path)
     whitelist_file = os.path.join(map_dir, whitelist_path)
-    with open(geo_file, "w") as f:
-        f.write(geo_content)
+    if chunk_size <= 0:
+        with open(geo_file, "w") as f:
+            f.write(geo_content)
+    else:
+        geo_lines = geo_content.splitlines()
+        with open(geo_file, "w") as f:
+            for i in range(0, len(geo_lines), chunk_size):
+                chunk = geo_lines[i : i + chunk_size]
+                f.write("\n".join(chunk))
+                if i + chunk_size < len(geo_lines):
+                    f.write("\n")
+                if sleep_after_chunk_ms > 0:
+                    time.sleep(sleep_after_chunk_ms / 1000.0)
+            if geo_content.endswith("\n"):
+                f.write("\n")
     with open(whitelist_file, "w") as f:
         f.write(whitelist_content)
     logger.info("Wrote %s and %s", geo_file, whitelist_file)

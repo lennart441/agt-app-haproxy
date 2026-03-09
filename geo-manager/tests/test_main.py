@@ -82,6 +82,14 @@ def test_run_master_loop_no_url_exits_early(monkeypatch):
     run_master_loop(config)
 
 
+def test_run_master_loop_os_nice_fails_continues(monkeypatch):
+    """When os.nice raises (e.g. Windows), loop still runs."""
+    monkeypatch.setenv("GEO_SOURCE_URL", "")
+    config = Config.from_env()
+    with patch("geo_manager.main.os.nice", side_effect=AttributeError("nice not available")):
+        run_master_loop(config)
+
+
 @patch("geo_manager.main._master_fetch_validate_activate")
 def test_run_master_loop_with_url_calls_fetch_then_sleep(mock_activate, monkeypatch):
     monkeypatch.setenv("GEO_SOURCE_URL", "http://example.com/geo.csv")
@@ -292,6 +300,14 @@ def test_run_follower_loop_prio1_returns_immediately():
     config = Config.from_env()
     config.node_prio = 1
     run_follower_loop(config)
+
+
+def test_run_follower_loop_os_nice_fails_continues():
+    """When os.nice raises (e.g. Windows), follower loop still runs."""
+    config = Config.from_env()
+    config.node_prio = 1
+    with patch("geo_manager.main.os.nice", side_effect=OSError(1, "Permission denied")):
+        run_follower_loop(config)
 
 
 @patch("geo_manager.main._master_fetch_validate_activate")
