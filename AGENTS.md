@@ -37,6 +37,8 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 | `geo-manager/tests/` | Pytest-Tests; Ziel 100 % Coverage für `geo_manager`. |
 | `.env.example` | Vorlage für alle ENV-Variablen; pro Server eigene `.env`. |
 | `docker-compose.yaml` | Einheitliche Definition für haproxy, coraza-spoa, geo-manager. |
+| `Dokumentationen/` | Projekt-Dokumentationen: Installation, Betrieb, Architektur, Wartung. Hier werden alle Doku-Dateien abgelegt (siehe `Dokumentationen/README.md`). |
+| `scripts/` | Hilfsskripte: `gen-dev-cert.sh` (lokaler Test: SSL + Socket), `deploy-haproxy-certs.sh` (Let's Encrypt-Zertifikate auf alle Knoten deployen). Konfiguration Deploy: `scripts/cert-deploy.env` (Vorlage: `cert-deploy.env.example`). |
 
 ---
 
@@ -106,6 +108,7 @@ docker build -f coraza/Dockerfile.coraza -t coraza-spoa:test .
 
 ## 9. Referenzen
 
+- **Dokumentationen**: Ordner `Dokumentationen/` – hier liegen alle Projekt-Dokumentationen (Installation, Betrieb, Wartung usw.). Einstieg: `Dokumentationen/README.md`; ausführliche Installationsanleitung: `Dokumentationen/Installation.md`.
 - **Installation/Historie**: `sys-doku.md` (bestehende Server-Setups, WireGuard, Zertifikate).
 - **Spezifikation/Plan**: Cursor-Plan „HA Geo-Blocking Staged Rollout“ (Architektur, Phasen, Implementierungsreihenfolge).
 - **Deployment**: `README.md` (Deployment, Geo-Manager-Kurzbeschreibung, Tests).

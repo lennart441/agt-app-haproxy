@@ -23,8 +23,10 @@ def trigger_reload(socket_path: str, wait_for_socket_sec: int = 30) -> bool:
         logger.info("Waiting for HAProxy socket at %s ...", socket_path)
         time.sleep(2)
     try:
+        # Kein Shell: socket_path als einzelnes Argument an socat übergeben (keine Command-Injection).
         result = subprocess.run(
-            ["sh", "-c", f'echo "reload" | socat stdio "{socket_path}"'],
+            ["socat", "STDIO", f"UNIX-CONNECT:{socket_path}"],
+            input="reload\n",
             capture_output=True,
             text=True,
             timeout=10,
