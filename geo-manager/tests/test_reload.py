@@ -16,15 +16,54 @@ def test_trigger_reload_socket_missing():
 @patch("geo_manager.reload.subprocess.run")
 def test_trigger_reload_success(mock_run, mock_exists):
     mock_exists.return_value = True
-    mock_run.return_value = type("R", (), {"returncode": 0, "stderr": ""})()
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "Success=1\n", "stderr": ""}
+    )()
     assert trigger_reload("/var/run/haproxy.sock") is True
+
+
+@patch("os.path.exists")
+@patch("geo_manager.reload.subprocess.run")
+def test_trigger_reload_success_0_returns_false(mock_run, mock_exists):
+    """Antwort Success=0 (Config/Worker fehlgeschlagen) → False."""
+    mock_exists.return_value = True
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "Success=0\n", "stderr": ""}
+    )()
+    assert trigger_reload("/var/run/haproxy.sock") is False
+
+
+@patch("os.path.exists")
+@patch("geo_manager.reload.subprocess.run")
+def test_trigger_reload_success_0_with_stderr_logs_both(mock_run, mock_exists):
+    """Bei Success=0 und nichtleerem stderr werden beide geloggt (Branch-Abdeckung)."""
+    mock_exists.return_value = True
+    mock_run.return_value = type(
+        "R",
+        (),
+        {"returncode": 0, "stdout": "Success=0\n", "stderr": "ALERT: config parse failed"},
+    )()
+    assert trigger_reload("/var/run/haproxy.sock") is False
 
 
 @patch("os.path.exists")
 @patch("geo_manager.reload.subprocess.run")
 def test_trigger_reload_failure(mock_run, mock_exists):
     mock_exists.return_value = True
-    mock_run.return_value = type("R", (), {"returncode": 1, "stderr": "error"})()
+    mock_run.return_value = type(
+        "R", (), {"returncode": 1, "stdout": "", "stderr": "error"}
+    )()
+    assert trigger_reload("/var/run/haproxy.sock") is False
+
+
+@patch("os.path.exists")
+@patch("geo_manager.reload.subprocess.run")
+def test_trigger_reload_unclear_response_returns_false(mock_run, mock_exists):
+    """Antwort ohne Success=1/0 (z. B. alter Stats-Socket) → False."""
+    mock_exists.return_value = True
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "Unknown command\n", "stderr": ""}
+    )()
     assert trigger_reload("/var/run/haproxy.sock") is False
 
 
@@ -51,6 +90,8 @@ def test_trigger_reload_timeout(mock_run, mock_exists):
 def test_trigger_reload_waits_for_socket_then_succeeds(mock_run, mock_exists, mock_sleep):
     """Socket erscheint nach kurzer Wartezeit → Reload klappt."""
     mock_exists.side_effect = [False, False, True]
-    mock_run.return_value = type("R", (), {"returncode": 0, "stderr": ""})()
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "Success=1\n", "stderr": ""}
+    )()
     assert trigger_reload("/var/run/sock", wait_for_socket_sec=10) is True
     assert mock_sleep.call_count == 2

@@ -1,2 +1,4 @@
-# Initial default: all IPs blocked (XX). Geo-manager overwrites with real data.
-0.0.0.0/0	XX
+# Fail-open: Bis der Geo-Manager eine gültige Liste liefert, alle IPs durchlassen (erlaubtes Land).
+# Geo-Manager überschreibt mit echter Geo-Liste; danach gilt Staged Rollout.
+0.0.0.0/0	DE
+::/0	DE

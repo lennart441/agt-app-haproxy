@@ -1,5 +1,5 @@
 """
-Trigger HAProxy to reload maps (runtime API or socket).
+Trigger HAProxy to reload maps (Master-CLI socket, master-worker mode).
 """
 import logging
 import os
@@ -8,12 +8,15 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Reload kann dauern (Config parsen, neuer Worker starten). HAProxy-Doku: ggf. -t300 bei socat.
+RELOAD_SOCKET_TIMEOUT_SEC = 120
+
 
 def trigger_reload(socket_path: str, wait_for_socket_sec: int = 30) -> bool:
     """
-    Send 'reload' to HAProxy via stats socket. Uses socat if available.
-    If socket is missing, wait up to wait_for_socket_sec (poll every 2s) for HAProxy to create it.
-    Returns True on success.
+    Send 'reload' to HAProxy Master-CLI socket (erfordert -W -S …). Lädt Config und Maps neu.
+    Wenn der Socket fehlt, bis wait_for_socket_sec warten (Poll alle 2s).
+    Liefert True nur bei Success=1 in der Antwort.
     """
     deadline = time.monotonic() + wait_for_socket_sec
     while not os.path.exists(socket_path):
@@ -23,21 +26,31 @@ def trigger_reload(socket_path: str, wait_for_socket_sec: int = 30) -> bool:
         logger.info("Waiting for HAProxy socket at %s ...", socket_path)
         time.sleep(2)
     try:
-        # Kein Shell: socket_path als einzelnes Argument an socat übergeben (keine Command-Injection).
         result = subprocess.run(
             ["socat", "STDIO", f"UNIX-CONNECT:{socket_path}"],
             input="reload\n",
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=RELOAD_SOCKET_TIMEOUT_SEC,
         )
+        out = (result.stdout or "").strip()
+        err = (result.stderr or "").strip()
         if result.returncode != 0:
-            logger.error("socat reload failed: %s", result.stderr)
+            logger.error("socat reload failed (code %s): %s", result.returncode, err or out)
             return False
-        return True
+        if "Success=1" in out:
+            logger.debug("HAProxy reload Success=1")
+            return True
+        if "Success=0" in out:
+            logger.error("HAProxy reload Success=0 (new config/worker failed). stdout: %s", out)
+            if err:
+                logger.error("HAProxy reload stderr: %s", err)
+            return False
+        logger.warning("HAProxy reload response unclear (no Success=1/0). stdout: %r", out)
+        return False
     except FileNotFoundError:
         logger.error("socat not found")
         return False
     except subprocess.TimeoutExpired:
-        logger.error("reload timed out")
+        logger.error("reload timed out after %ds", RELOAD_SOCKET_TIMEOUT_SEC)
         return False

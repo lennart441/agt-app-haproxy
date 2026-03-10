@@ -43,12 +43,16 @@ sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|   server agt-3 172.20.0.3:50000|${LINE3}|" \
     "$CFG_SRC" > "$CFG_OUT"
 
-# Maps: Wenn geo.map/whitelist.map fehlen (z. B. nach Löschen oder Erststart), minimale Dateien anlegen,
-# damit HAProxy starten kann. Geo-Manager überschreibt sie später.
+# Maps: Wenn geo.map/whitelist.map fehlen, permissive Defaults (Fail-Open: alle durchlassen).
+# Geo-Manager überschreibt geo.map mit echter Liste.
 MAP_DIR="${HAPROXY_MAP_DIR:-/usr/local/etc/haproxy/maps}"
 mkdir -p "$MAP_DIR"
 if [ ! -f "$MAP_DIR/geo.map" ]; then
-  printf '0.0.0.0/0\tXX\n' > "$MAP_DIR/geo.map"
+  FIRST_GEO="${GEO_ALLOWED_COUNTRIES%%,*}"
+  FIRST_GEO="${FIRST_GEO:-DE}"
+  FIRST_GEO="$(echo "$FIRST_GEO" | tr -d ' ')"
+  [ -z "$FIRST_GEO" ] && FIRST_GEO="DE"
+  printf '0.0.0.0/0\t%s\n::/0\t%s\n' "$FIRST_GEO" "$FIRST_GEO" > "$MAP_DIR/geo.map"
 fi
 if [ ! -f "$MAP_DIR/whitelist.map" ]; then
   touch "$MAP_DIR/whitelist.map"

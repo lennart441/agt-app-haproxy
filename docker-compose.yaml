@@ -18,7 +18,8 @@ services:
       - STATS_PASSWORD=${STATS_PASSWORD:-change-me}
 
     entrypoint: ["sh", "/docker-entrypoint.sh"]
-    command: ["haproxy", "-f", "/tmp/haproxy.cfg"]
+    # Master-Worker nötig, damit "reload" am Master-CLI Maps neu lädt (ohne -W würde reload am Stats-Socket ignoriert).
+    command: ["haproxy", "-W", "-S", "/var/run/haproxy-stat/master", "-f", "/tmp/haproxy.cfg"]
 
     ports:
       - "80:80"
@@ -59,7 +60,7 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: 512M
+          memory: 1024M
 
     networks:
       - security-net
@@ -115,7 +116,7 @@ services:
       - GEO_BLOCKS_IPV6_URL=${GEO_BLOCKS_IPV6_URL:-}
       - MAP_DIR=/usr/local/etc/haproxy/maps
       - HAPROXY_CFG_PATH=/usr/local/etc/haproxy/haproxy.cfg
-      - HAPROXY_SOCKET=/var/run/haproxy-stat/socket
+      - HAPROXY_SOCKET=/var/run/haproxy-stat/master
       # Für haproxy -c (Syntax-Check): Zertifikat unter diesem Pfad (ssl separat gemountet, /etc/ssl/certs = CA-Bundle)
       - HAPROXY_CRT_PATH_FOR_VALIDATION=/etc/ssl/haproxy-pem/haproxy.pem
       - STAGE_DELAY_PRIO2_HOURS=${STAGE_DELAY_PRIO2_HOURS:-48}
