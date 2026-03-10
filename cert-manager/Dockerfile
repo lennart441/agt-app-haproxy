@@ -7,7 +7,8 @@ ENV PYTHONUNBUFFERED=1
 COPY cert-manager/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY cert-manager /app/cert_manager
+# Nur das Python-Paket nach /app/cert_manager, damit "python -m cert_manager" das Modul findet
+COPY cert-manager/cert_manager /app/cert_manager
 
 CMD ["python", "-m", "cert_manager"]
 

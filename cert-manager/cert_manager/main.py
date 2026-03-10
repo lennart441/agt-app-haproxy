@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .config import Config
-from .follower import run_follower_loop
+from .follower import run_follower_loop, run_follower_once
 from .leader import run_leader_once
 from .state import get_state
 
@@ -284,6 +284,8 @@ def main() -> None:
             config.status_port,
             config.node_prio,
         )
+        # Einmalig sofort versuchen, PEM vom Master zu holen (damit HAProxy beim Start sie hat)
+        run_follower_once(config)
         t = threading.Thread(target=run_follower_loop, args=(config,), daemon=True)
         t.start()
 

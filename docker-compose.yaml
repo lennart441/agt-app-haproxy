@@ -46,6 +46,8 @@ services:
     depends_on:
       coraza-spoa:
         condition: service_started
+      cert-manager:
+        condition: service_started
 
     deploy:
       resources:
@@ -144,9 +146,7 @@ services:
       context: .
       dockerfile: cert-manager/Dockerfile
     container_name: cert-manager
-    depends_on:
-      haproxy:
-        condition: service_started
+    # Kein depends_on: startet zuerst, schreibt auf Master sofort ssl/haproxy.pem; HAProxy wartet auf cert-manager
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
       - NODE_PRIO=${NODE_PRIO:-1}
@@ -154,8 +154,9 @@ services:
       - CERT_IS_MASTER=${CERT_IS_MASTER:-false}
       - CERT_CLUSTER_KEY=${CERT_CLUSTER_KEY:-}
       - CERT_STATUS_PORT=${CERT_STATUS_PORT:-8081}
-      - CERT_SOURCE_FULLCHAIN=${CERT_SOURCE_FULLCHAIN:-}
-      - CERT_SOURCE_PRIVKEY=${CERT_SOURCE_PRIVKEY:-}
+      # Standard: Mount von CERT_LE_DIR_HOST ist /certs im Container
+      - CERT_SOURCE_FULLCHAIN=${CERT_SOURCE_FULLCHAIN:-/certs/fullchain.pem}
+      - CERT_SOURCE_PRIVKEY=${CERT_SOURCE_PRIVKEY:-/certs/privkey.pem}
       - CERT_TARGET_PEM_PATH=${CERT_TARGET_PEM_PATH:-/etc/ssl/certs/haproxy.pem}
       - CERT_STAGE_DELAY_PRIO2_HOURS=${CERT_STAGE_DELAY_PRIO2_HOURS:-1}
       - CERT_STAGE_DELAY_PRIO3_HOURS=${CERT_STAGE_DELAY_PRIO3_HOURS:-2}

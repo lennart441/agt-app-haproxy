@@ -132,6 +132,32 @@ def download_cert_from_master(
     return body
 
 
+def run_follower_once(config: Config) -> bool:
+    """
+    Single follower iteration: try to fetch PEM from master if due.
+    Returns True if a cert was activated, False otherwise.
+    """
+    if config.am_i_master() or not config.mesh_nodes:
+        return False
+    result = get_master_status(config)
+    if result is None:
+        return False
+    master_ip, master_state = result
+    if not should_activate(config, master_state):
+        return False
+    pem = download_cert_from_master(master_ip, config, master_state.version)
+    if pem is None:
+        return False
+    write_target_pem(config, pem)
+    set_state_from_pem(pem)
+    logger.info(
+        "Follower activated certificate version %s from %s",
+        master_state.version,
+        master_ip,
+    )
+    return True
+
+
 def run_follower_loop(config: Config) -> None:  # pragma: no cover
     """Background loop for followers: poll master and activate new certs when due.
 
