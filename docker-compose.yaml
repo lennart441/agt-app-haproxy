@@ -100,6 +100,7 @@ services:
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
       - NODE_PRIO=${NODE_PRIO:-1}
+      - CLUSTER_MAXCONN=${CLUSTER_MAXCONN:-200}
       - MESH_NODES=${MESH_NODES:-}
       - ANCHOR_IPS=${ANCHOR_IPS:-}
       - GEO_SOURCE_URL=${GEO_SOURCE_URL:-}

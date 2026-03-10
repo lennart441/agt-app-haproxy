@@ -5,14 +5,104 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from geo_manager.config import Config
 from geo_manager.validation import (
-    validate_syntax,
-    validate_size,
+    PEER_LINE_1_TEMPLATE,
+    PEER_LINE_2_TEMPLATE,
+    PEER_LINE_3_TEMPLATE,
+    _build_peer_lines,
+    _get_processed_config_path,
     validate_anchors,
+    validate_size,
+    validate_syntax,
+    validate_syntax_with_config,
     persist_size,
     _lookup_country_for_ip,
     GEO_MAP_SIZE_FILE,
 )
+
+
+def test_build_peer_lines_local_agt1():
+    config = Config.from_env()
+    config.node_name = "agt-1"
+    config.mesh_nodes = ["172.20.0.1", "172.20.0.2", "172.20.0.3"]
+    l1, l2, l3 = _build_peer_lines(config)
+    assert l1 == "   server agt-1"
+    assert l2 == "   server agt-2 172.20.0.2:50000"
+    assert l3 == "   server agt-3 172.20.0.3:50000"
+
+
+def test_build_peer_lines_local_agt2():
+    config = Config.from_env()
+    config.node_name = "agt-2"
+    config.mesh_nodes = ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    l1, l2, l3 = _build_peer_lines(config)
+    assert l1 == "   server agt-1 10.0.0.1:50000"
+    assert l2 == "   server agt-2"
+    assert l3 == "   server agt-3 10.0.0.3:50000"
+
+
+def test_build_peer_lines_fewer_mesh_nodes_uses_defaults():
+    """With only one mesh node, agt-2/agt-3 use default IPs (172.20.0.2, 172.20.0.3)."""
+    config = Config.from_env()
+    config.node_name = "agt-1"
+    config.mesh_nodes = ["192.168.1.1"]
+    l1, l2, l3 = _build_peer_lines(config)
+    assert l1 == "   server agt-1"
+    assert l2 == "   server agt-2 172.20.0.2:50000"
+    assert l3 == "   server agt-3 172.20.0.3:50000"
+
+
+def test_get_processed_config_path_replaces_placeholders(tmp_path):
+    cfg = tmp_path / "haproxy.cfg"
+    cfg.write_text(
+        "localpeer __NODE_NAME__\n"
+        "acl too_many_conn sc1_conn_cur(st_global_conn) ge __CLUSTER_MAXCONN__\n"
+        + PEER_LINE_1_TEMPLATE + "\n"
+        + PEER_LINE_2_TEMPLATE + "\n"
+        + PEER_LINE_3_TEMPLATE + "\n"
+    )
+    config = Config.from_env()
+    config.node_name = "agt-2"
+    config.cluster_maxconn = 300
+    config.mesh_nodes = ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    path = _get_processed_config_path(str(cfg), config)
+    try:
+        content = open(path).read()
+        assert "localpeer agt-2" in content
+        assert "ge 300" in content
+        assert "   server agt-1 10.0.0.1:50000" in content
+        assert "   server agt-2\n" in content or "   server agt-2" in content
+        assert "   server agt-3 10.0.0.3:50000" in content
+    finally:
+        os.unlink(path)
+
+
+def test_validate_syntax_with_config_missing_file():
+    config = Config.from_env()
+    assert validate_syntax_with_config("/nonexistent/haproxy.cfg", "/tmp", config) is False
+
+
+def test_validate_syntax_with_config_success(tmp_path):
+    cfg = tmp_path / "haproxy.cfg"
+    cfg.write_text("global\n  daemon\n")
+    config = Config.from_env()
+    config.haproxy_cfg_path = str(cfg)
+    config.map_dir = str(tmp_path)
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=0, stderr="")
+        assert validate_syntax_with_config(str(cfg), str(tmp_path), config) is True
+
+
+def test_validate_syntax_with_config_unlink_oserror_still_returns_result(tmp_path):
+    """When temp file unlink raises OSError, result is still returned (finally block covered)."""
+    cfg = tmp_path / "haproxy.cfg"
+    cfg.write_text("global\n  daemon\n")
+    config = Config.from_env()
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=0, stderr="")
+        with patch("geo_manager.validation.os.unlink", side_effect=OSError):
+            assert validate_syntax_with_config(str(cfg), str(tmp_path), config) is True
 
 
 def test_validate_syntax_config_missing():

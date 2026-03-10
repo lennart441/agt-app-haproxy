@@ -28,7 +28,12 @@ from .fetcher import (
 from .notify import send_failure_mail
 from .reload import trigger_reload
 from .staging import get_master_validated_at, should_follower_activate
-from .validation import persist_size, validate_anchors, validate_size, validate_syntax
+from .validation import (
+    persist_size,
+    validate_anchors,
+    validate_size,
+    validate_syntax_with_config,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -268,7 +273,9 @@ def _master_fetch_validate_activate(config: Config) -> None:
         sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
     )
 
-    if not validate_syntax(config.haproxy_cfg_path, config.map_dir):
+    if not validate_syntax_with_config(
+        config.haproxy_cfg_path, config.map_dir, config
+    ):
         if os.path.isfile(backup_path):
             os.replace(backup_path, geo_map_path)
         raise RuntimeError("Syntax check failed; backup restored")

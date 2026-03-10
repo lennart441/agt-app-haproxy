@@ -342,14 +342,14 @@ def test_run_follower_loop_activates_when_ready(mock_activate, mock_get_master):
 
 
 @patch("geo_manager.main.trigger_reload")
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.write_maps")
 @patch("geo_manager.main.build_whitelist_map")
 @patch("geo_manager.main.fetch_geo_csv_to_map")
 def test_master_fetch_validate_activate_uses_blocks_and_locations(
-    mock_csv, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path, monkeypatch
+    mock_csv, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("GEO_BLOCKS_URL", "http://a/blocks.csv")
     monkeypatch.setenv("GEO_LOCATIONS_URL", "http://a/loc.csv")
@@ -357,7 +357,7 @@ def test_master_fetch_validate_activate_uses_blocks_and_locations(
     mock_whitelist.return_value = ""
     mock_size.return_value = True
     mock_anchors.return_value = True
-    mock_syntax.return_value = True
+    mock_syntax_with_config.return_value = True
     mock_reload.return_value = True
     config = Config.from_env()
     config.map_dir = str(tmp_path)
@@ -368,7 +368,7 @@ def test_master_fetch_validate_activate_uses_blocks_and_locations(
 
 
 @patch("geo_manager.main.trigger_reload")
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.write_maps")
@@ -376,7 +376,7 @@ def test_master_fetch_validate_activate_uses_blocks_and_locations(
 @patch("geo_manager.main.fetch_geo_from_single_url")
 @patch("geo_manager.main.fetch_geo_csv_to_map")
 def test_master_fetch_validate_activate_success(
-    mock_csv, mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload,
+    mock_csv, mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload,
     tmp_path,
 ):
     mock_whitelist.return_value = "8.8.8.8\t1\n"
@@ -384,7 +384,7 @@ def test_master_fetch_validate_activate_success(
     mock_csv.side_effect = Exception("not used")
     mock_size.return_value = True
     mock_anchors.return_value = True
-    mock_syntax.return_value = True
+    mock_syntax_with_config.return_value = True
     mock_reload.return_value = True
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
@@ -399,7 +399,7 @@ def test_master_fetch_validate_activate_success(
 
 
 @patch("geo_manager.main.trigger_reload")
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.write_maps")
@@ -407,7 +407,7 @@ def test_master_fetch_validate_activate_success(
 @patch("geo_manager.main.merge_geo_map_contents")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
-    mock_single, mock_merge, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path
+    mock_single, mock_merge, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
     """When GEO_SOURCE_IPV6_URL is set, both URLs are fetched and merged."""
     mock_single.side_effect = ["1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n", "2001:db8::/32\tDE\n"]
@@ -415,7 +415,7 @@ def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
     mock_whitelist.return_value = "8.8.8.8\t1\n"
     mock_size.return_value = True
     mock_anchors.return_value = True
-    mock_syntax.return_value = True
+    mock_syntax_with_config.return_value = True
     mock_reload.return_value = True
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
@@ -454,21 +454,21 @@ def test_master_fetch_validate_activate_size_fail(mock_single, mock_size):
 
 
 @patch("geo_manager.main.trigger_reload")
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.write_maps")
 @patch("geo_manager.main.build_whitelist_map")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_anchor_ips_empty_skips_check(
-    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload,
+    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload,
     tmp_path,
 ):
     """When anchor_ips is empty, validate_anchors is not called (check skipped)."""
     mock_single.return_value = "1.0.0.0/24\tDE\n"
     mock_whitelist.return_value = ""
     mock_size.return_value = True
-    mock_syntax.return_value = True
+    mock_syntax_with_config.return_value = True
     mock_reload.return_value = True
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
@@ -499,16 +499,16 @@ def test_master_fetch_validate_activate_anchor_fail(
         _master_fetch_validate_activate(config)
 
 
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.write_maps")
 @patch("geo_manager.main.build_whitelist_map")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_syntax_fail_restores_backup(
-    mock_single, mock_whitelist, mock_write, mock_syntax, tmp_path
+    mock_single, mock_whitelist, mock_write, mock_syntax_with_config, tmp_path
 ):
     mock_single.return_value = "1.0.0.0/24\tDE\n"
     mock_whitelist.return_value = ""
-    mock_syntax.return_value = False
+    mock_syntax_with_config.return_value = False
     (tmp_path / "geo.map").write_text("old")
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
@@ -521,20 +521,20 @@ def test_master_fetch_validate_activate_syntax_fail_restores_backup(
 
 
 @patch("geo_manager.main.trigger_reload")
-@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.write_maps")
 @patch("geo_manager.main.build_whitelist_map")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_reload_fails(
-    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path
+    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
     mock_single.return_value = "1.0.0.0/24\tDE\n"
     mock_whitelist.return_value = ""
     mock_size.return_value = True
     mock_anchors.return_value = True
-    mock_syntax.return_value = True
+    mock_syntax_with_config.return_value = True
     mock_reload.return_value = False
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"

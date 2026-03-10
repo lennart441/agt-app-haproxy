@@ -16,6 +16,7 @@ def test_config_from_env_defaults():
     config = Config.from_env()
     assert config.node_name == "agt-1"
     assert config.node_prio == 1
+    assert config.cluster_maxconn == 200
     assert config.mesh_nodes == []
     assert config.anchor_ips == []
     assert config.geo_source_url == ""
@@ -52,9 +53,11 @@ def test_config_from_env_custom(monkeypatch):
     monkeypatch.setenv("BUILD_NICE_LEVEL", "15")
     monkeypatch.setenv("BUILD_CHUNK_SIZE", "2000")
     monkeypatch.setenv("BUILD_SLEEP_AFTER_CHUNK_MS", "100")
+    monkeypatch.setenv("CLUSTER_MAXCONN", "500")
 
     config = Config.from_env()
     assert config.node_name == "agt-2"
+    assert config.cluster_maxconn == 500
     assert config.node_prio == 2
     assert config.mesh_nodes == ["172.20.0.1", "172.20.0.2"]
     assert config.anchor_ips == ["8.8.8.8", "1.1.1.1"]
@@ -72,10 +75,12 @@ def test_config_invalid_build_params_fallback(monkeypatch):
     monkeypatch.setenv("BUILD_NICE_LEVEL", "x")
     monkeypatch.setenv("BUILD_CHUNK_SIZE", "y")
     monkeypatch.setenv("BUILD_SLEEP_AFTER_CHUNK_MS", "z")
+    monkeypatch.setenv("CLUSTER_MAXCONN", "invalid")
     config = Config.from_env()
     assert config.build_nice_level == 10
     assert config.build_chunk_size == 5000
     assert config.build_sleep_after_chunk_ms == 50
+    assert config.cluster_maxconn == 200
 
 
 def test_config_invalid_prio_fallback(monkeypatch):

@@ -16,6 +16,7 @@ class Config:
 
     node_name: str
     node_prio: int
+    cluster_maxconn: int
     mesh_nodes: List[str]
     anchor_ips: List[str]
     geo_source_url: str
@@ -119,6 +120,11 @@ class Config:
             cluster_timeout = 5.0
 
         try:
+            cluster_maxconn = int(os.environ.get("CLUSTER_MAXCONN", "200"))
+        except ValueError:
+            cluster_maxconn = 200
+
+        try:
             mail_port = int(os.environ.get("MAIL_PORT", "587"))
         except ValueError:
             mail_port = 587
@@ -126,6 +132,7 @@ class Config:
         return cls(
             node_name=os.environ.get("NODE_NAME", "agt-1"),
             node_prio=node_prio,
+            cluster_maxconn=cluster_maxconn,
             mesh_nodes=mesh_nodes,
             anchor_ips=anchor_ips,
             geo_source_url=os.environ.get("GEO_SOURCE_URL", "").strip(),

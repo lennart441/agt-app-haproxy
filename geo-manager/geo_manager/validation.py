@@ -6,14 +6,58 @@ import ipaddress
 import logging
 import os
 import subprocess
-from typing import List, Optional
+import tempfile
+from typing import TYPE_CHECKING, List, Optional
 
 from .config import ALLOWED_COUNTRY_CODES
 
+if TYPE_CHECKING:
+    from .config import Config
+
 logger = logging.getLogger(__name__)
+
+# Template strings in haproxy.cfg that are replaced by the HAProxy entrypoint; we need the same for -c in geo-manager.
+PEER_LINE_1_TEMPLATE = "   server agt-1 172.20.0.1:50000"
+PEER_LINE_2_TEMPLATE = "   server agt-2 172.20.0.2:50000"
+PEER_LINE_3_TEMPLATE = "   server agt-3 172.20.0.3:50000"
 
 # Size file to persist previous geo.map size
 GEO_MAP_SIZE_FILE = "geo.map.size"
+
+
+def _build_peer_lines(config: "Config") -> tuple[str, str, str]:
+    """Build peer server lines (same logic as haproxy-docker-entrypoint.sh)."""
+    default_ips = ("172.20.0.1", "172.20.0.2", "172.20.0.3")
+    lines = []
+    for idx in range(1, 4):
+        name = f"agt-{idx}"
+        ip = config.mesh_nodes[idx - 1] if idx - 1 < len(config.mesh_nodes) else default_ips[idx - 1]
+        if name == config.node_name:
+            lines.append(f"   server {name}")
+        else:
+            lines.append(f"   server {name} {ip}:50000")
+    return lines[0], lines[1], lines[2]
+
+
+def _get_processed_config_path(cfg_path: str, config: "Config") -> str:
+    """
+    Read template haproxy.cfg, replace __NODE_NAME__, __CLUSTER_MAXCONN__, peer lines
+    (same as HAProxy entrypoint), write to temp file. Caller must unlink the returned path.
+    """
+    with open(cfg_path) as f:
+        content = f.read()
+    line1, line2, line3 = _build_peer_lines(config)
+    content = content.replace("__NODE_NAME__", config.node_name)
+    content = content.replace("__CLUSTER_MAXCONN__", str(config.cluster_maxconn))
+    content = content.replace(PEER_LINE_1_TEMPLATE, line1)
+    content = content.replace(PEER_LINE_2_TEMPLATE, line2)
+    content = content.replace(PEER_LINE_3_TEMPLATE, line3)
+    fd, path = tempfile.mkstemp(suffix=".cfg", prefix="haproxy-")
+    try:
+        os.write(fd, content.encode("utf-8"))
+    finally:
+        os.close(fd)
+    return path
 
 
 def validate_syntax(
@@ -46,6 +90,30 @@ def validate_syntax(
     except subprocess.TimeoutExpired:
         logger.error("haproxy -c timed out")
         return False
+
+
+def validate_syntax_with_config(
+    haproxy_cfg_path: str,
+    map_dir: str,
+    config: "Config",
+    haproxy_bin: str = "haproxy",
+) -> bool:
+    """
+    Like validate_syntax but replaces __NODE_NAME__, __CLUSTER_MAXCONN__, peer lines
+    (same as HAProxy entrypoint) so haproxy -c sees a valid config. Use this when
+    the config file is the repo template with placeholders.
+    """
+    if not os.path.isfile(haproxy_cfg_path):
+        logger.error("Config file not found: %s", haproxy_cfg_path)
+        return False
+    processed_path = _get_processed_config_path(haproxy_cfg_path, config)
+    try:
+        return validate_syntax(processed_path, map_dir, haproxy_bin)
+    finally:
+        try:
+            os.unlink(processed_path)
+        except OSError:
+            pass
 
 
 def validate_size(
