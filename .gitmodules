@@ -1,0 +1,3 @@
+[submodule "coraza/rules/coreruleset"]
+	path = coraza/rules/coreruleset
+	url = https://github.com/coreruleset/coreruleset.git
