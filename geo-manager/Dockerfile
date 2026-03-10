@@ -2,7 +2,8 @@
 # Needs haproxy for config validation (-c) and socat for reload socket.
 FROM python:3.11-alpine
 
-RUN apk add --no-cache haproxy socat
+# ca-certificates: für HTTPS-Downloads (z. B. Geo-CSV von raw.githubusercontent.com)
+RUN apk add --no-cache ca-certificates haproxy socat
 
 WORKDIR /app
 # When built from repo root: docker build -f geo-manager/Dockerfile .
