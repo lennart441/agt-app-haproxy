@@ -8,9 +8,9 @@
 
 | Aspekt | Bewertung | Hinweis |
 |--------|-----------|---------|
-| **Production Ready** | **Eher nein** | Kritische Punkte (Stats-Auth, Bindung) müssen vor produktivem Einsatz behoben werden. |
-| **Sicherheitsrisiken** | **Hoch** | Hardcodierte Stats-Zugangsdaten, Stats-Frontend auf allen Interfaces; weitere mittlere Risiken. |
-| **Logik / Ausfall** | **Beherrschbar** | Safety-Pipeline (Validierung, Staged Rollout) ist stimmig; einzelne Schwachstellen (z. B. Reload-Shell, file://). |
+| **Production Ready** | **Ja, unter Auflagen** | Kritische Punkte (Stats-Auth, Bindung, Reload) sind adressiert; Betrieb setzt saubere Netz-/Firewall-Regeln und korrektes ENV-Setup voraus. |
+| **Sicherheitsrisiken** | **Mittel** | Restrisiken v. a. bei Mesh/Ports (8080) und file://-Konfiguration; mit den beschriebenen Betriebsauflagen vertretbar. |
+| **Logik / Ausfall** | **Beherrschbar** | Safety-Pipeline (Validierung, Staged Rollout) ist stimmig; Reload läuft nun ohne Shell-Injection-Risiko. |
 
 ---
 

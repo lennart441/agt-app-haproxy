@@ -6,15 +6,25 @@ services:
     image: haproxy:3.2-alpine
     container_name: haproxy_gateway
 
+    environment:
+      - NODE_NAME=${NODE_NAME:-agt-1}
+      - MESH_NODES=${MESH_NODES:-172.20.0.1,172.20.0.2,172.20.0.3}
+      - CLUSTER_MAXCONN=${CLUSTER_MAXCONN:-200}
+      - STATS_USER=${STATS_USER:-admin}
+      - STATS_PASSWORD=${STATS_PASSWORD:-change-me}
+
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command: ["haproxy", "-f", "/tmp/haproxy.cfg"]
+
     ports:
       - "80:80"
       - "443:443"
-      - "56708:56708"
       - "50000:50000"
       - "8404:8404"
 
     volumes:
       - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./scripts/haproxy-docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./ssl:/etc/ssl/certs:ro
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
@@ -26,7 +36,7 @@ services:
       net.ipv4.ip_unprivileged_port_start: 0
 
     healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      test: ["CMD", "haproxy", "-c", "-f", "/tmp/haproxy.cfg"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -124,6 +134,36 @@ services:
       - ./run/haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"
+    restart: always
+    networks:
+      - security-net
+
+  cert-manager:
+    build:
+      context: .
+      dockerfile: cert-manager/Dockerfile
+    container_name: cert-manager
+    depends_on:
+      haproxy:
+        condition: service_started
+    environment:
+      - NODE_NAME=${NODE_NAME:-agt-1}
+      - NODE_PRIO=${NODE_PRIO:-1}
+      - MESH_NODES=${MESH_NODES:-}
+      - CERT_IS_MASTER=${CERT_IS_MASTER:-false}
+      - CERT_CLUSTER_KEY=${CERT_CLUSTER_KEY:-}
+      - CERT_STATUS_PORT=${CERT_STATUS_PORT:-8081}
+      - CERT_SOURCE_FULLCHAIN=${CERT_SOURCE_FULLCHAIN:-}
+      - CERT_SOURCE_PRIVKEY=${CERT_SOURCE_PRIVKEY:-}
+      - CERT_TARGET_PEM_PATH=${CERT_TARGET_PEM_PATH:-/etc/ssl/certs/haproxy.pem}
+      - CERT_STAGE_DELAY_PRIO2_HOURS=${CERT_STAGE_DELAY_PRIO2_HOURS:-1}
+      - CERT_STAGE_DELAY_PRIO3_HOURS=${CERT_STAGE_DELAY_PRIO3_HOURS:-2}
+      - CERT_POLL_INTERVAL_SECONDS=${CERT_POLL_INTERVAL_SECONDS:-300}
+    volumes:
+      - ./ssl:/etc/ssl/certs
+      # Certbot-Verzeichnis auf allen Knoten gleich mounten; auf Nicht-Master-Knoten kann
+      # der Ordner leer sein, stört den cert-manager aber nicht.
+      - ${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}:/certs:ro
     restart: always
     networks:
       - security-net

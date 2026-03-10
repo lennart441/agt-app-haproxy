@@ -1,0 +1,5 @@
+#
+# Runtime requirements for cert-manager.
+# Intentionally kept minimal; only Python stdlib is used currently.
+#
+

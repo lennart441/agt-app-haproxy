@@ -1,0 +1,14 @@
+HTTP/1.0 429 Too Many Requests
+Cache-Control: no-cache
+Connection: close
+Content-Type: application/json
+
+{
+  "error": "rate_limit_exceeded",
+  "http_status": 429,
+  "category": "backend_rate_limit",
+  "message": "Too many requests for this service. Please slow down and retry later.",
+  "hint": "If you are a human user, please try again in a moment. If you are an automated client or monitoring system, reduce your request rate.",
+  "details": "The service has reached a configured per-backend request limit to protect the system under high load."
+}
+

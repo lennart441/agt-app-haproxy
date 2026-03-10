@@ -53,7 +53,7 @@ def get_validated_at() -> Optional[datetime]:
 
 
 class GeoStatusHandler(BaseHTTPRequestHandler):
-    """Serves GET /geo/status, /health, /metrics, /cluster."""
+    """Serves GET /geo/status, /health, /metrics, /cluster and POST /geo/deploy-now."""
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -69,6 +69,14 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
             return
         if path == "/geo/status":
             self._send_geo_status(config)
+            return
+        self.send_error(404)
+
+    def do_POST(self):
+        path = self.path.split("?")[0]
+        config = self.server.config  # type: ignore
+        if path == "/geo/deploy-now":
+            self._handle_geo_deploy_now(config)
             return
         self.send_error(404)
 
@@ -119,6 +127,28 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_geo_deploy_now(self, config: Config) -> None:
+        """POST /geo/deploy-now: manually trigger fetch/validate/activate on master."""
+        if not config.am_i_master():
+            self.send_error(403, "Only geo-master may deploy maps")
+            return
+        try:
+            _master_fetch_validate_activate(config)
+        except Exception as exc:
+            msg = f"Geo deploy failed: {exc}".encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            return
+        body = b"OK"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

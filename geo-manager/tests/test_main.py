@@ -33,6 +33,41 @@ def test_geo_status_handler_404():
     handler.send_error.assert_called_once_with(404)
 
 
+def test_geo_deploy_now_forbidden_for_follower():
+    """POST /geo/deploy-now returns 403 on non-master nodes."""
+    handler = MagicMock()
+    handler.path = "/geo/deploy-now"
+    handler.server = MagicMock()
+    config = MagicMock()
+    config.am_i_master.return_value = False
+    handler.server.config = config
+    GeoStatusHandler.do_POST(handler)
+    handler.send_error.assert_called_once()
+    code, _msg = handler.send_error.call_args[0]
+    assert code == 403
+
+
+def test_geo_deploy_now_master_success(monkeypatch):
+    """POST /geo/deploy-now on master triggers _master_fetch_validate_activate."""
+    handler = MagicMock()
+    handler.path = "/geo/deploy-now"
+    handler.server = MagicMock()
+    config = Config.from_env()
+    config.node_prio = 1
+    handler.server.config = config
+
+    from geo_manager import main as main_mod
+
+    called = {}
+
+    def fake_master_activate(cfg):
+        called["run"] = True
+
+    monkeypatch.setattr(main_mod, "_master_fetch_validate_activate", fake_master_activate)
+    GeoStatusHandler.do_POST(handler)
+    assert called.get("run") is True
+
+
 def test_health_handler_200():
     """GET /health returns 200 OK."""
     handler = MagicMock()

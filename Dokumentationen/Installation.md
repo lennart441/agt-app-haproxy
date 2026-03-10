@@ -60,9 +60,10 @@ chmod 600 .env
 ```
 
 - **Pro Server anzupassen (Pflicht):**
-  - **NODE_NAME:** Eindeutiger Knotenname, z. B. `agt-1`, `agt-2`, `agt-3`.
+  - **NODE_NAME:** Eindeutiger Knotenname, z. B. `agt-1`, `agt-2`, `agt-3`. Wird beim Start des HAProxy-Containers automatisch in die Config eingetragen (Platzhalter `__NODE_NAME__` → `localpeer`); die Datei `conf/haproxy.cfg` muss nicht manuell geändert werden.
+  - **MESH_NODES:** Kommaseparierte Mesh-IPs **aller drei** Knoten, Reihenfolge = agt-1, agt-2, agt-3 (z. B. `172.20.0.1,172.20.0.2,172.20.0.3`). Wird für Geo-Manager (Cluster-Health) und im HAProxy-Entrypoint für die Peers-Zeilen genutzt (lokaler Knoten ohne IP, andere mit IP:50000).
+  - **CLUSTER_MAXCONN:** Clusterweites Verbindungslimit (z. B. 200). Über eine Stick-Table mit konstantem Key „global“ und Peers-Synchronisation wird die Summe der Verbindungen über alle Knoten begrenzt; ab diesem Wert antwortet jeder Knoten mit 503 (Überlastungsschutz).
   - **NODE_PRIO:** `1` = Master (lädt Geo-Daten, schreibt Maps), `2` oder `3` = Follower (übernehmen Maps mit Verzögerung). Pro physischem Server genau einen Master (Prio 1) und zwei Follower (Prio 2 und 3).
-  - **MESH_NODES:** Kommaseparierte Liste der WireGuard-/Mesh-IPs **aller drei** Knoten, z. B. `172.20.0.1,172.20.0.2,172.20.0.3`. Wichtig für Cluster-Health und Statusabfragen.
   - **ANCHOR_IPS:** Kommaseparierte IPs, die in der Geo-Liste als DE/EU (oder erlaubte Länder) gelten **müssen**. Der Geo-Manager prüft vor Aktivierung einer neuen Map, dass diese IPs erlaubt sind (Plausibilitäts-Check). Fehlt eine Anchor-IP oder ist sie „blockiert“, wird die neue Map nicht aktiviert.
   - **GEO_SOURCE_URL:** URL der Geo-IP-CSV (eine Datei mit Spalten z. B. `network`, `country_iso_code`). Alternativ zwei URLs: `GEO_BLOCKS_URL` und `GEO_LOCATIONS_URL` (MaxMind-Style). Ohne gültige URL kann der Master keine Maps erzeugen.
 
@@ -73,15 +74,20 @@ chmod 600 .env
 ### 4.2 TLS-Zertifikat für HAProxy (`ssl/haproxy.pem`)
 
 - **Datei:** `ssl/haproxy.pem` im Projektroot.  
-- **Automatische Erneuerung:** Siehe [Zertifikatserneuerung.md](Zertifikatserneuerung.md) (Let's Encrypt, Certbot, Deploy-Script auf alle Knoten).  
+- **Automatische Erneuerung:** Siehe [Zertifikatserneuerung.md](Zertifikatserneuerung.md) (Let's Encrypt, Certbot, Deploy-Script auf alle Knoten) **oder** den neuen In-Cluster-Rollout über den cert-manager (siehe [Zertifikats-Rollout.md](Zertifikats-Rollout.md)).  
 - **Inhalt:** Fullchain (Zertifikat + ggf. Zwischenzertifikate) und privater Schlüssel in **einer** Datei (übliches Format für HAProxy). Reihenfolge: zuerst Zertifikat(e), dann `-----BEGIN PRIVATE KEY-----` bzw. `-----BEGIN RSA PRIVATE KEY-----`.
 
 - **Woher:** Ihre interne CA, Let's Encrypt oder anderer Zertifikatsanbieter. Auf dem Server nur die fertige PEM-Datei ablegen; Private Keys niemals ins Repo oder in unsichere Verzeichnisse legen.
 
 ```bash
 mkdir -p ssl
-# PEM-Datei von sicherer Quelle nach ssl/haproxy.pem kopieren
+# Option A (bestehend): PEM-Datei von sicherer Quelle nach ssl/haproxy.pem kopieren
 chmod 600 ssl/haproxy.pem
+```
+
+- **Hinweis cert-manager:** Wenn der cert-manager im Cluster verwendet wird, schreibt dieser das kombinierte PEM automatisch nach `ssl/haproxy.pem` (bzw. den gemounteten Pfad). In diesem Fall muss die Datei nicht mehr manuell kopiert werden; stattdessen sorgt Certbot auf dem Masterknoten für frische Zertifikate, und der cert-manager verteilt sie im Cluster.
+
+```bash
 ```
 
 - **Warum 600:** Nur der Eigentümer soll den privaten Schlüssel lesen können; die Container mounten die Datei read-only.
@@ -202,7 +208,35 @@ docker compose ps
 
 ### 7.4 HAProxy-Statistik
 
-- Falls Sie die HAProxy-Statistik-Seite nutzen (Port 56708, URI und Zugangsdaten siehe `conf/haproxy.cfg`): Im Browser oder mit `curl` prüfen, ob die Seite erreichbar ist. Dort sehen Sie Backend- und Frontend-Status.
+- Die HAProxy-Statistik-Seite läuft im Container auf Port 56708 und ist auf `127.0.0.1` gebunden (`conf/haproxy.cfg`, `frontend stats`). Es gibt **kein** Port-Mapping in `docker-compose.yaml`; Zugriff erfolgt nur über den Host (z. B. SSH-Tunnel oder `docker exec`).
+- Die URI ist in `conf/haproxy.cfg` hinterlegt, die Zugangsdaten werden **nur** über ENV gesetzt (`STATS_USER`, `STATS_PASSWORD` in `.env`).
+- Beispiel:
+
+  ```env
+  STATS_USER=admin
+  STATS_PASSWORD=<sehr-starkes-passwort>
+  ```
+
+- Zugriff z. B. per SSH-Tunnel:
+
+  ```bash
+  ssh -L 56708:127.0.0.1:56708 <admin>@<haproxy-host>
+  ```
+
+  Danach im Browser `http://localhost:56708/<stats-uri>` aufrufen. Dort sehen Sie Backend- und Frontend-Status.
+
+### 7.5 Zentrales Cluster-Dashboard (cert-manager)
+
+- Der `cert-manager` stellt ein kleines, read-only Dashboard unter `GET /dashboard` bereit (im gleichen internen Netzwerk wie HAProxy/Geo-Manager).
+- Das Dashboard zeigt u. a.:
+  - Knotenname und Priorität (`NODE_NAME`, `NODE_PRIO`)
+  - Rolle (Zertifikats-Master oder Follower)
+  - Aktive Zertifikatsversion (`version`-Hash) und „gültig seit“
+  - Einen eingebetteten Status-Auszug des Geo-Managers (`/geo/status`)
+  - Zwei Buttons:
+    - **Deploy Zertifikat jetzt** – baut auf dem Zertifikats-Master ein neues `haproxy.pem` aus den Certbot-Dateien (`fullchain.pem`/`privkey.pem`).
+    - **Deploy Geo-Listen jetzt** – triggert auf dem Geo-Master einen sofortigen Fetch/Validate/Activate-Lauf.
+- Das Dashboard ist standardmäßig **nicht** nach außen gemappt; Zugriff erfolgt intern (z. B. per Port-Forwarding auf den `cert-manager`-Container oder einen nachgelagerten Admin-Proxy). Für den ersten Produktivtest bietet es eine zentrale Übersicht und manuelle „Deploy now“-Knöpfe.
 
 ### 7.5 Was tun bei Fehlern?
 
