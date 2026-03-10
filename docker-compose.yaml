@@ -5,6 +5,7 @@ services:
   haproxy:
     image: haproxy:3.2-alpine
     container_name: haproxy_gateway
+    user: "99:99"
 
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
@@ -30,7 +31,7 @@ services:
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
       - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
       - ./conf/maps:/usr/local/etc/haproxy/maps
-      - ./run/haproxy-stat:/var/run/haproxy-stat
+      - haproxy-stat:/var/run/haproxy-stat
 
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
@@ -134,7 +135,7 @@ services:
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
       # Kein Mount von ./ssl nach /etc/ssl/certs: würde CA-Bundle überschreiben und HTTPS-Downloads (Geo-Quellen) brechen
-      - ./run/haproxy-stat:/var/run/haproxy-stat
+      - haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"
     restart: always
@@ -172,3 +173,7 @@ services:
 
 networks:
   security-net: {}
+
+# Named Volume für Stats-Socket (HAProxy + Geo-Manager). HAProxy läuft als user 99:99, kein chown nötig.
+volumes:
+  haproxy-stat:

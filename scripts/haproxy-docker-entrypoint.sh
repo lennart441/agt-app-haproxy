@@ -37,11 +37,10 @@ sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|   server agt-3 172.20.0.3:50000|${LINE3}|" \
     "$CFG_SRC" > "$CFG_OUT"
 
-# Stats-Socket: Verzeichnis anlegen, alten Socket entfernen, Rechte für haproxy (99:99)
-# Verhindert "Permission denied" beim Binden, egal wer das Host-Verzeichnis angelegt hat.
+# Stats-Socket: Verzeichnis anlegen, alten Socket entfernen.
+# Container läuft als user 99:99 (haproxy), dann ist chown überflüssig und schlägt unter rootless Docker fehl.
 SOCKET_DIR="${HAPROXY_SOCKET_DIR:-/var/run/haproxy-stat}"
 mkdir -p "$SOCKET_DIR"
 rm -f "$SOCKET_DIR/socket"
-chown 99:99 "$SOCKET_DIR"
 
 exec "$@"
