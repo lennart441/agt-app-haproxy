@@ -37,10 +37,12 @@ sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|   server agt-3 172.20.0.3:50000|${LINE3}|" \
     "$CFG_SRC" > "$CFG_OUT"
 
-# Stats-Socket: Verzeichnis anlegen, alten Socket entfernen.
-# Container läuft als user 99:99 (haproxy), dann ist chown überflüssig und schlägt unter rootless Docker fehl.
+# Stats-Socket: Verzeichnis anlegen, Rechte setzen, dann HAProxy als User 99 starten.
+# chown 99:99 schlägt unter rootless Docker fehl → Fallback chmod 1777; setpriv startet HAProxy ohne root.
 SOCKET_DIR="${HAPROXY_SOCKET_DIR:-/var/run/haproxy-stat}"
 mkdir -p "$SOCKET_DIR"
 rm -f "$SOCKET_DIR/socket"
-
-exec "$@"
+if ! chown 99:99 "$SOCKET_DIR" 2>/dev/null; then
+  chmod 1777 "$SOCKET_DIR"
+fi
+exec setpriv --reuid=99 --regid=99 --init-groups -- "$@"

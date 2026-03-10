@@ -3,9 +3,11 @@
 
 services:
   haproxy:
+    build:
+      context: .
+      dockerfile: haproxy/Dockerfile
     image: haproxy:3.2-alpine
     container_name: haproxy_gateway
-    user: "99:99"
 
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
@@ -174,6 +176,6 @@ services:
 networks:
   security-net: {}
 
-# Named Volume für Stats-Socket (HAProxy + Geo-Manager). HAProxy läuft als user 99:99, kein chown nötig.
+# Named Volume für Stats-Socket (HAProxy + Geo-Manager). Entrypoint setzt Rechte (chown/chmod), HAProxy läuft per setpriv als 99.
 volumes:
   haproxy-stat:
