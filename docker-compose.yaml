@@ -133,7 +133,7 @@ services:
       - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
-      - ./ssl:/etc/ssl/certs:ro
+      # Kein Mount von ./ssl nach /etc/ssl/certs: würde CA-Bundle überschreiben und HTTPS-Downloads (Geo-Quellen) brechen
       - ./run/haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"

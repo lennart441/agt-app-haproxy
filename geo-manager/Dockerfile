@@ -4,6 +4,10 @@ FROM python:3.11-alpine
 
 # ca-certificates: für HTTPS-Downloads (z. B. Geo-CSV von raw.githubusercontent.com)
 RUN apk add --no-cache ca-certificates haproxy socat
+# Nach der Installation von ca-certificates hinzufügen
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_DIR=/etc/ssl/certs
+
 
 WORKDIR /app
 # When built from repo root: docker build -f geo-manager/Dockerfile .
