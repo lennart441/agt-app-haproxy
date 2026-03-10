@@ -3,13 +3,31 @@ import os
 
 import pytest
 
-from geo_manager.config import Config, ALLOWED_COUNTRY_CODES
+from geo_manager.config import Config, DEFAULT_ALLOWED_COUNTRY_CODES
 
 
-def test_allowed_country_codes():
-    assert "DE" in ALLOWED_COUNTRY_CODES
-    assert "AT" in ALLOWED_COUNTRY_CODES
-    assert "US" not in ALLOWED_COUNTRY_CODES
+def test_default_allowed_country_codes():
+    assert "DE" in DEFAULT_ALLOWED_COUNTRY_CODES
+    assert "AT" in DEFAULT_ALLOWED_COUNTRY_CODES
+    assert "US" not in DEFAULT_ALLOWED_COUNTRY_CODES
+
+
+def test_config_allowed_country_codes_from_env_empty_uses_default(monkeypatch):
+    monkeypatch.delenv("GEO_ALLOWED_COUNTRIES", raising=False)
+    config = Config.from_env()
+    assert config.allowed_country_codes == DEFAULT_ALLOWED_COUNTRY_CODES
+
+
+def test_config_allowed_country_codes_from_env_custom(monkeypatch):
+    monkeypatch.setenv("GEO_ALLOWED_COUNTRIES", "DE,AT,CH,FR")
+    config = Config.from_env()
+    assert config.allowed_country_codes == frozenset({"DE", "AT", "CH", "FR"})
+
+
+def test_config_allowed_country_codes_from_env_uppercase(monkeypatch):
+    monkeypatch.setenv("GEO_ALLOWED_COUNTRIES", "de, at , ch")
+    config = Config.from_env()
+    assert config.allowed_country_codes == frozenset({"DE", "AT", "CH"})
 
 
 def test_config_from_env_defaults():
@@ -19,6 +37,7 @@ def test_config_from_env_defaults():
     assert config.cluster_maxconn == 200
     assert config.mesh_nodes == []
     assert config.anchor_ips == []
+    assert config.allowed_country_codes == DEFAULT_ALLOWED_COUNTRY_CODES
     assert config.geo_source_url == ""
     assert config.geo_source_ipv6_url is None
     assert config.geo_blocks_ipv6_url is None
@@ -38,6 +57,7 @@ def test_config_from_env_defaults():
     assert config.mail_enabled is False
     assert config.cluster_health_interval_hours >= 0.25
     assert config.cluster_health_timeout_sec >= 1.0
+    assert config.fail_open_min_entries == 50
 
 
 def test_config_from_env_custom(monkeypatch):
@@ -45,6 +65,7 @@ def test_config_from_env_custom(monkeypatch):
     monkeypatch.setenv("NODE_PRIO", "2")
     monkeypatch.setenv("MESH_NODES", "172.20.0.1, 172.20.0.2")
     monkeypatch.setenv("ANCHOR_IPS", "8.8.8.8, 1.1.1.1")
+    monkeypatch.setenv("GEO_ALLOWED_COUNTRIES", "DE,AT,NL")
     monkeypatch.setenv("GEO_SOURCE_URL", "https://example.com/geo.csv")
     monkeypatch.setenv("STAGE_DELAY_PRIO2_HOURS", "24")
     monkeypatch.setenv("STAGE_DELAY_PRIO3_HOURS", "72")
@@ -61,6 +82,7 @@ def test_config_from_env_custom(monkeypatch):
     assert config.node_prio == 2
     assert config.mesh_nodes == ["172.20.0.1", "172.20.0.2"]
     assert config.anchor_ips == ["8.8.8.8", "1.1.1.1"]
+    assert config.allowed_country_codes == frozenset({"DE", "AT", "NL"})
     assert config.geo_source_url == "https://example.com/geo.csv"
     assert config.stage_delay_prio2_hours == 24
     assert config.stage_delay_prio3_hours == 72
@@ -189,3 +211,21 @@ def test_config_invalid_mail_port_fallback(monkeypatch):
     monkeypatch.setenv("MAIL_PORT", "not_a_number")
     config = Config.from_env()
     assert config.mail_port == 587
+
+
+def test_config_fail_open_min_entries_default(monkeypatch):
+    monkeypatch.delenv("GEO_FAIL_OPEN_MIN_ENTRIES", raising=False)
+    config = Config.from_env()
+    assert config.fail_open_min_entries == 50
+
+
+def test_config_fail_open_min_entries_custom(monkeypatch):
+    monkeypatch.setenv("GEO_FAIL_OPEN_MIN_ENTRIES", "100")
+    config = Config.from_env()
+    assert config.fail_open_min_entries == 100
+
+
+def test_config_fail_open_min_entries_invalid_fallback(monkeypatch):
+    monkeypatch.setenv("GEO_FAIL_OPEN_MIN_ENTRIES", "x")
+    config = Config.from_env()
+    assert config.fail_open_min_entries == 50

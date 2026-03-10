@@ -28,10 +28,15 @@ LINE1="${LINE1:-   server agt-1}"
 LINE2="${LINE2:-   server agt-2 172.20.0.2:50000}"
 LINE3="${LINE3:-   server agt-3 172.20.0.3:50000}"
 
-# 1) NODE_NAME und CLUSTER_MAXCONN (für Stick-Table-Limit) ersetzen
+# GEO_ALLOWED_COUNTRIES: kommasepariert (z. B. DE,AT,CH) → Regex (DE|AT|CH) für HAProxy-ACL
+GEO_ALLOWED_COUNTRIES="${GEO_ALLOWED_COUNTRIES:-DE,AT,CH,FR,IT,LU,BE,NL}"
+GEO_REGEX="$(echo "$GEO_ALLOWED_COUNTRIES" | sed 's/ *, */|/g' | sed 's/^/(/' | sed 's/$/)/')"
+
+# 1) NODE_NAME, CLUSTER_MAXCONN, Geo-Länder-Regex ersetzen
 # 2) Peers-Zeilen: lokaler Peer ohne IP (Template hat feste 172.20.0.x; ersetze durch generierte Zeilen)
 sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|__CLUSTER_MAXCONN__|${CLUSTER_MAXCONN}|g" \
+    -e "s|__GEO_ALLOWED_COUNTRIES_REGEX__|${GEO_REGEX}|g" \
     -e "s|   server agt-1 172.20.0.1:50000|${LINE1}|" \
     -e "s|   server agt-2 172.20.0.2:50000|${LINE2}|" \
     -e "s|   server agt-3 172.20.0.3:50000|${LINE3}|" \

@@ -17,7 +17,7 @@ from .cluster_health import (
     run_cluster_probe,
     set_cluster_health_state,
 )
-from .config import Config, ALLOWED_COUNTRY_CODES
+from .config import Config
 from .fetcher import (
     build_whitelist_map,
     fetch_geo_csv_to_map,
@@ -29,6 +29,8 @@ from .notify import send_failure_mail
 from .reload import trigger_reload
 from .staging import get_master_validated_at, should_follower_activate
 from .validation import (
+    build_permissive_geo_map,
+    count_geo_data_lines,
     persist_size,
     validate_anchors,
     validate_size,
@@ -248,16 +250,37 @@ def _master_fetch_validate_activate(config: Config) -> None:
             if geo_ipv6.strip():
                 geo_content = merge_geo_map_contents(geo_content, geo_ipv6)
 
+    # Fail-open: Liste fehlt oder zu klein (< fail_open_min_entries) → alle durchlassen, aber Fehler loggen
+    fail_open = False
     if not geo_content.strip():
-        raise RuntimeError("Fetched geo content is empty")
+        fail_open = True
+        logger.error(
+            "Fail-open: Geo-Liste fehlt (leer). Erlaube alle Zugriffe; bitte GEO_SOURCE_URL prüfen."
+        )
+        geo_content = build_permissive_geo_map(config.allowed_country_codes)
+    elif count_geo_data_lines(geo_content) < config.fail_open_min_entries:
+        fail_open = True
+        n = count_geo_data_lines(geo_content)
+        logger.error(
+            "Fail-open: Geo-Liste hat nur %d Einträge (Minimum %d). Erlaube alle Zugriffe.",
+            n,
+            config.fail_open_min_entries,
+        )
+        geo_content = build_permissive_geo_map(config.allowed_country_codes)
 
-    if not validate_size(geo_content, config.map_dir, config.size_deviation_threshold):
+    if not fail_open and not validate_size(
+        geo_content, config.map_dir, config.size_deviation_threshold
+    ):
         raise RuntimeError("Size check failed")
 
-    if config.anchor_ips and not validate_anchors(
-        geo_content, config.anchor_ips, ALLOWED_COUNTRY_CODES
-    ):
-        raise RuntimeError("Anchor check failed")
+    # Plausibilitätscheck (Anchor-Check): nur wenn ANCHOR_IPS gesetzt; leer = Check überspringen, nicht abbrechen
+    if config.anchor_ips:
+        if not validate_anchors(
+            geo_content, config.anchor_ips, config.allowed_country_codes
+        ):
+            raise RuntimeError("Anchor check failed")
+    else:
+        logger.info("ANCHOR_IPS empty: anchor plausibility check skipped")
 
     geo_map_path = os.path.join(config.map_dir, "geo.map")
     backup_path = os.path.join(config.map_dir, "geo.map.bak")

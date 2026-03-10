@@ -14,6 +14,8 @@ from geo_manager.validation import (
     PEER_LINE_3_TEMPLATE,
     _build_peer_lines,
     _get_processed_config_path,
+    build_permissive_geo_map,
+    count_geo_data_lines,
     validate_anchors,
     validate_size,
     validate_syntax,
@@ -227,6 +229,25 @@ def test_validate_anchors_missing_ip():
 
 def test_validate_anchors_empty_list():
     assert validate_anchors("x\ty\n", []) is True
+
+
+def test_count_geo_data_lines():
+    assert count_geo_data_lines("") == 0
+    assert count_geo_data_lines("# comment\n") == 0
+    assert count_geo_data_lines("1.0.0.0/24\tDE\n") == 1
+    assert count_geo_data_lines("1.0.0.0/24\tDE\n2.0.0.0/24\tAT\n") == 2
+    assert count_geo_data_lines("# c\n1.0.0.0/24\tDE\n\n2.0.0.0/24\tAT\n") == 2
+    assert count_geo_data_lines("line without tab\n") == 0
+
+
+def test_build_permissive_geo_map():
+    out = build_permissive_geo_map(frozenset({"DE", "AT"}))
+    assert "0.0.0.0/0\t" in out
+    assert "::/0\t" in out
+    assert out.strip().endswith("DE") or out.strip().endswith("AT")
+    empty = build_permissive_geo_map(frozenset())
+    assert "0.0.0.0/0\tDE\n" in empty
+    assert "::/0\tDE\n" in empty
 
 
 def test_validate_anchors_skips_comments():

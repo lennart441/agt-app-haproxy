@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from typing import TYPE_CHECKING, List, Optional
 
-from .config import ALLOWED_COUNTRY_CODES
+from .config import DEFAULT_ALLOWED_COUNTRY_CODES
 
 if TYPE_CHECKING:
     from .config import Config
@@ -157,6 +157,33 @@ def validate_size(
     return True
 
 
+def count_geo_data_lines(geo_map_content: str) -> int:
+    """
+    Zählt Datenzeilen in geo map (Format: network\\tcountry).
+    Leerzeilen und Zeilen die mit # starten zählen nicht.
+    """
+    count = 0
+    for line in geo_map_content.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "\t" in line:
+            count += 1
+    return count
+
+
+def build_permissive_geo_map(allowed_country_codes: frozenset) -> str:
+    """
+    Erzeugt eine permissive Geo-Map (alle IPs erlaubt) für Fail-Open.
+    IPv4 und IPv6 werden auf ein erlaubtes Länderkürzel gemappt.
+    """
+    if not allowed_country_codes:
+        code = "DE"
+    else:
+        code = sorted(allowed_country_codes)[0]
+    return f"0.0.0.0/0\t{code}\n::/0\t{code}\n"
+
+
 def _lookup_country_for_ip(geo_map_content: str, ip: str) -> Optional[str]:
     """
     Find country code for a single IP from geo map content.
@@ -186,7 +213,7 @@ def _lookup_country_for_ip(geo_map_content: str, ip: str) -> Optional[str]:
 def validate_anchors(
     geo_map_content: str,
     anchor_ips: List[str],
-    allowed_codes: frozenset = ALLOWED_COUNTRY_CODES,
+    allowed_codes: frozenset = DEFAULT_ALLOWED_COUNTRY_CODES,
 ) -> bool:
     """
     Every anchor IP must resolve to an allowed country in the new map.

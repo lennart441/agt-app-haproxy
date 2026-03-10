@@ -353,7 +353,7 @@ def test_master_fetch_validate_activate_uses_blocks_and_locations(
 ):
     monkeypatch.setenv("GEO_BLOCKS_URL", "http://a/blocks.csv")
     monkeypatch.setenv("GEO_LOCATIONS_URL", "http://a/loc.csv")
-    mock_csv.return_value = "1.0.0.0/24\tDE\n"
+    mock_csv.return_value = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
     mock_whitelist.return_value = ""
     mock_size.return_value = True
     mock_anchors.return_value = True
@@ -380,7 +380,9 @@ def test_master_fetch_validate_activate_success(
     tmp_path,
 ):
     mock_whitelist.return_value = "8.8.8.8\t1\n"
-    mock_single.return_value = "1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n"
+    # Mind. 50 Zeilen, damit kein Fail-Open (Normalpfad)
+    geo_50 = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
+    mock_single.return_value = geo_50 + "\n8.8.8.8/32\tDE\n"
     mock_csv.side_effect = Exception("not used")
     mock_size.return_value = True
     mock_anchors.return_value = True
@@ -410,8 +412,9 @@ def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
     mock_single, mock_merge, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
     """When GEO_SOURCE_IPV6_URL is set, both URLs are fetched and merged."""
-    mock_single.side_effect = ["1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n", "2001:db8::/32\tDE\n"]
-    mock_merge.return_value = "1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n2001:db8::/32\tDE\n"
+    geo_50 = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
+    mock_single.side_effect = [geo_50 + "\n8.8.8.8/32\tDE\n", "2001:db8::/32\tDE\n"]
+    mock_merge.return_value = geo_50 + "\n8.8.8.8/32\tDE\n2001:db8::/32\tDE\n"
     mock_whitelist.return_value = "8.8.8.8\t1\n"
     mock_size.return_value = True
     mock_anchors.return_value = True
@@ -433,19 +436,11 @@ def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
     mock_reload.assert_called_once()
 
 
-@patch("geo_manager.main.fetch_geo_from_single_url")
-def test_master_fetch_validate_activate_empty_content(mock_single):
-    mock_single.return_value = "   \n"
-    config = Config.from_env()
-    config.geo_source_url = "http://example.com/geo.csv"
-    with pytest.raises(RuntimeError, match="empty"):
-        _master_fetch_validate_activate(config)
-
-
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_size_fail(mock_single, mock_size):
-    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    # Mind. 50 Zeilen, damit kein Fail-Open und validate_size aufgerufen wird
+    mock_single.return_value = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
     mock_size.return_value = False
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
@@ -499,12 +494,70 @@ def test_master_fetch_validate_activate_anchor_fail(
         _master_fetch_validate_activate(config)
 
 
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax_with_config")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_fail_open_empty_content(
+    mock_single, mock_whitelist, mock_write, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
+):
+    """Bei leerer Geo-Liste: Fail-open, permissive Map schreiben, kein Abbruch."""
+    mock_single.return_value = ""
+    mock_whitelist.return_value = ""
+    mock_anchors.return_value = True
+    mock_syntax_with_config.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    _master_fetch_validate_activate(config)
+    # write_maps(map_dir, geo_content, whitelist_content, ...) → Index 1 = geo_content
+    call_args = mock_write.call_args
+    geo_content = call_args[0][1]
+    assert "0.0.0.0/0\t" in geo_content
+    assert "::/0\t" in geo_content
+    mock_reload.assert_called_once()
+
+
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax_with_config")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_fail_open_few_entries(
+    mock_single, mock_whitelist, mock_write, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
+):
+    """Bei weniger als 50 Einträgen: Fail-open, permissive Map."""
+    mock_single.return_value = "1.0.0.0/24\tDE\n2.0.0.0/24\tAT\n"
+    mock_whitelist.return_value = ""
+    mock_anchors.return_value = True
+    mock_syntax_with_config.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    _master_fetch_validate_activate(config)
+    call_args = mock_write.call_args
+    geo_content = call_args[0][1]
+    assert "0.0.0.0/0\t" in geo_content
+    assert "::/0\t" in geo_content
+    mock_reload.assert_called_once()
+
+
+@patch("geo_manager.main.trigger_reload")
 @patch("geo_manager.main.validate_syntax_with_config")
 @patch("geo_manager.main.write_maps")
 @patch("geo_manager.main.build_whitelist_map")
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_syntax_fail_restores_backup(
-    mock_single, mock_whitelist, mock_write, mock_syntax_with_config, tmp_path
+    mock_single, mock_whitelist, mock_write, mock_syntax_with_config, mock_reload, tmp_path
 ):
     mock_single.return_value = "1.0.0.0/24\tDE\n"
     mock_whitelist.return_value = ""

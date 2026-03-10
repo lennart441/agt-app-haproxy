@@ -5,9 +5,8 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-
-# Allowed country codes for geo (DE, EU border regions). Anchor IPs must resolve to these.
-ALLOWED_COUNTRY_CODES = frozenset({"DE", "AT", "CH", "FR", "IT", "LU", "BE", "NL"})
+# Default erlaubte Länderkürzel (Geo-Whitelist), wenn GEO_ALLOWED_COUNTRIES nicht gesetzt.
+DEFAULT_ALLOWED_COUNTRY_CODES = frozenset({"DE", "AT", "CH", "FR", "IT", "LU", "BE", "NL"})
 
 
 @dataclass
@@ -19,6 +18,7 @@ class Config:
     cluster_maxconn: int
     mesh_nodes: List[str]
     anchor_ips: List[str]
+    allowed_country_codes: frozenset  # aus GEO_ALLOWED_COUNTRIES (kommasepariert), z. B. DE,AT,CH
     geo_source_url: str
     geo_source_ipv6_url: Optional[str]  # optional second CSV (same format as GEO_SOURCE_URL), merged into geo.map
     geo_blocks_ipv6_url: Optional[str]  # optional IPv6 blocks CSV (MaxMind format), merged when using GEO_BLOCKS_URL
@@ -47,6 +47,8 @@ class Config:
     # Cluster health (weekly probe, latency, offline tracking)
     cluster_health_interval_hours: float
     cluster_health_timeout_sec: float
+    # Fail-open: wenn Geo-Liste fehlt oder < N Einträge, alle durchlassen (mit Fehler-Log)
+    fail_open_min_entries: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -54,6 +56,14 @@ class Config:
         mesh_nodes = [s.strip() for s in mesh.split(",") if s.strip()]
         anchors = os.environ.get("ANCHOR_IPS", "")
         anchor_ips = [s.strip() for s in anchors.split(",") if s.strip()]
+
+        raw_countries = os.environ.get("GEO_ALLOWED_COUNTRIES", "").strip()
+        if raw_countries:
+            allowed_country_codes = frozenset(
+                c.strip().upper() for c in raw_countries.split(",") if c.strip()
+            )
+        else:
+            allowed_country_codes = DEFAULT_ALLOWED_COUNTRY_CODES
 
         try:
             node_prio = int(os.environ.get("NODE_PRIO", "1"))
@@ -129,12 +139,19 @@ class Config:
         except ValueError:
             mail_port = 587
 
+        try:
+            fail_open_min = int(os.environ.get("GEO_FAIL_OPEN_MIN_ENTRIES", "50"))
+        except ValueError:
+            fail_open_min = 50
+        fail_open_min_entries = max(1, fail_open_min)
+
         return cls(
             node_name=os.environ.get("NODE_NAME", "agt-1"),
             node_prio=node_prio,
             cluster_maxconn=cluster_maxconn,
             mesh_nodes=mesh_nodes,
             anchor_ips=anchor_ips,
+            allowed_country_codes=allowed_country_codes,
             geo_source_url=os.environ.get("GEO_SOURCE_URL", "").strip(),
             geo_source_ipv6_url=os.environ.get("GEO_SOURCE_IPV6_URL", "").strip() or None,
             geo_blocks_ipv6_url=os.environ.get("GEO_BLOCKS_IPV6_URL", "").strip() or None,
@@ -163,6 +180,7 @@ class Config:
             mail_to=mail_to,
             cluster_health_interval_hours=max(0.25, cluster_interval),
             cluster_health_timeout_sec=max(1.0, cluster_timeout),
+            fail_open_min_entries=fail_open_min_entries,
         )
 
     def stage_delay_hours_for_prio(self, prio: int) -> int:
