@@ -20,7 +20,8 @@ applications:
      SecRule REQUEST_HEADERS:Content-Type "@rx (?i)application/json" \
        "id:999001,phase:1,nolog,pass,ctl:requestBodyProcessor=JSON"
 
-     Include /etc/coraza-spoa/rules/crs-setup.conf.example
-     Include /etc/coraza-spoa/rules/rules/*.conf
+     Include /etc/coraza-spoa/rules/coreruleset/crs-setup.conf.example
+     Include /etc/coraza-spoa/rules/coreruleset/rules/*.conf
+     Include /etc/coraza-spoa/rules/custom/*.conf
 
      SecRule ARGS:testwaf "123" "id:190001,phase:2,deny,status:403,msg:'Coraza WAF Test Block'"

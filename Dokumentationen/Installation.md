@@ -94,17 +94,22 @@ chmod 600 ssl/haproxy.pem
 
 ### 4.3 Coraza-/OWASP-Regeln (`coraza/rules/`)
 
-- **Verzeichnis:** `coraza/rules/`  
-- **Inhalt:** Die WAF-Regeln (z. B. OWASP ModSecurity Core Rule Set). Ohne Regeln startet der Coraza-SPOA-Container ggf. mit leeren Regeln; für Produktion müssen hier die gewünschten Regeldateien liegen.
+- **Verzeichnis:** `coraza/rules/coreruleset/` (Git-Submodule)  
+- **Inhalt:** Das OWASP Coreruleset (CRS) ist als Submodule ins Projekt eingebunden. Ohne initialisierte Regeln startet der Coraza-SPOA-Container nicht korrekt.
 
-Beispiel (OWASP CRS aus GitHub):
+Submodule nach dem Klonen initialisieren:
 
 ```bash
-git clone https://github.com/coreruleset/coreruleset.git coraza/rules
-# Oder nur bestimmte Version/Unterverzeichnis übernehmen – je nach Projektvorgabe.
+git submodule update --init --recursive
 ```
 
-- **Hinweis:** Prüfen Sie die Projekt- bzw. Sicherheitsvorgaben, ob bestimmte CRS-Versionen oder Anpassungen vorgeschrieben sind.
+Beim Klonen in einem Schritt:
+
+```bash
+git clone --recurse-submodules <repo-url>
+```
+
+- **Hinweis:** Die CRS-Version ist im Submodule-Referenz festgehalten. Updates siehe `coraza/rules/README.md`. Prüfen Sie die Projekt- bzw. Sicherheitsvorgaben, ob bestimmte CRS-Versionen oder Anpassungen vorgeschrieben sind.
 
 ### 4.4 HAProxy-Stat-Socket-Verzeichnis (`run/haproxy-stat`)
 
@@ -259,7 +264,7 @@ docker compose ps
 - [ ] Repo in festes Verzeichnis (z. B. `/opt/agt-app-haproxy`) geklont, ggf. Tag/Branch gesetzt  
 - [ ] `.env` aus `.env.example` erstellt, `NODE_NAME`, `NODE_PRIO`, `MESH_NODES`, `ANCHOR_IPS`, `GEO_SOURCE_URL` pro Server korrekt gesetzt  
 - [ ] `ssl/haproxy.pem` (Fullchain + Privkey) vorhanden, Rechte 600  
-- [ ] `coraza/rules/` mit WAF-Regeln (z. B. OWASP CRS) befüllt  
+- [ ] Submodule `coraza/rules/coreruleset` initialisiert (`git submodule update --init --recursive`)  
 - [ ] `run/haproxy-stat` angelegt, `chown 99:99`  
 - [ ] `haproxy -c -f conf/haproxy.cfg` erfolgreich (per Docker-Befehl)  
 - [ ] `docker compose up -d --build` ausgeführt, alle drei Container „Up“  

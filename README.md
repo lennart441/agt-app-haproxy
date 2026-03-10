@@ -15,7 +15,7 @@ Einheitliches Docker-Setup für HAProxy 3+ mit Coraza WAF und Geo-Manager (Safet
 - Docker & Docker Compose
 - Pro Server: eigene `.env` mit `NODE_NAME`, `NODE_PRIO`, `MESH_NODES`, `ANCHOR_IPS`, `GEO_SOURCE_URL`
 - SSL: `ssl/haproxy.pem` (Fullchain + Privkey) pro Server
-- Coraza-Regeln: `coraza/rules/` (z. B. `git clone https://github.com/coreruleset/coreruleset.git coraza/rules`)
+- Coraza-Regeln: Submodule unter `coraza/rules/coreruleset/` (nach Klonen: `git submodule update --init --recursive`)
 
 ## Deployment
 
@@ -28,7 +28,7 @@ Einheitliches Docker-Setup für HAProxy 3+ mit Coraza WAF und Geo-Manager (Safet
    - `ANCHOR_IPS` = Komma-getrennte IPs, die in der Geo-Liste als DE/EU gelten müssen (Plausibilitäts-Check).
    - `GEO_SOURCE_URL` = URL zur Geo-IP-CSV (oder `GEO_BLOCKS_URL` + `GEO_LOCATIONS_URL` für MaxMind-Style).
 3. `ssl/haproxy.pem` bereitstellen.
-4. Coraza-Regeln: `coraza/rules/` befüllen (siehe oben).
+4. Coraza-Regeln: Submodule initialisieren: `git submodule update --init --recursive` (siehe `coraza/rules/README.md`).
 5. Start: `docker compose up -d`.
 
 Auf jedem der drei Server denselben Ablauf mit jeweils passender `.env` ausführen. Es wird nur eine `docker-compose.yaml` verwendet.
@@ -37,7 +37,7 @@ Auf jedem der drei Server denselben Ablauf mit jeweils passender `.env` ausführ
 
 Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Reload) lokal:
 
-**Voraussetzungen:** Coraza-Regeln in `coraza/rules/` (Stub-Dateien reichen). SSL + Socket: für lokalen Test einmal `./scripts/gen-dev-cert.sh` ausführen (erzeugt `ssl/haproxy.pem` und bereitet `run/haproxy-stat` mit Rechten für HAProxy vor). Wenn HAProxy im Loop abstürzt („Restarting“): `sudo chown 99:99 run/haproxy-stat` ausführen.
+**Voraussetzungen:** Coraza-Regeln via Submodule (`git submodule update --init --recursive`). SSL + Socket: für lokalen Test einmal `./scripts/gen-dev-cert.sh` ausführen (erzeugt `ssl/haproxy.pem` und bereitet `run/haproxy-stat` mit Rechten für HAProxy vor). Wenn HAProxy im Loop abstürzt („Restarting“): `sudo chown 99:99 run/haproxy-stat` ausführen.
 
 1. **Geo-CSV einmalig auf dem Host laden** (im Container oft kein Internet):
    ```bash

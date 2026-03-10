@@ -31,7 +31,7 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 | `conf/` | HAProxy- und WAF-Konfiguration: `haproxy.cfg`, `coraza.cfg`, `coraza-spoa.yaml`, `errors/`, `maps/` (Start-Maps), `promtail-config.yaml`. |
 | `conf/maps/` | Initiale `geo.map` und `whitelist.map`; Geo-Manager überschreibt sie. |
 | `ssl/` | `haproxy.pem` (Fullchain+Privkey), pro Server befüllen, nicht committen. |
-| `coraza/` | `Dockerfile.coraza` (Coraza SPOA Build), `rules/` (OWASP CRS, z. B. via `git clone` coreruleset). |
+| `coraza/` | `Dockerfile.coraza` (Coraza SPOA Build), `rules/coreruleset/` (OWASP CRS als Git-Submodule). |
 | `geo-manager/` | Python-Paket `geo_manager`: Config, Fetcher, Validierung, Staging, Reload, HTTP-Status; plus Tests. |
 | `geo-manager/geo_manager/` | Quellcode: `config.py`, `fetcher.py`, `validation.py`, `staging.py`, `reload.py`, `main.py`, `__main__.py`. |
 | `geo-manager/tests/` | Pytest-Tests; Ziel 100 % Coverage für `geo_manager`. |
@@ -84,7 +84,7 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
 | Andere Geo-Quelle (z. B. MMDB) | `geo-manager/geo_manager/fetcher.py`; Tests in `geo-manager/tests/test_fetcher.py`. |
 | Staged-Delays ändern | `config.py` (Defaults), `.env.example`; Verhalten in `staging.py`. |
 | HAProxy-Frontend/Backend anpassen | `conf/haproxy.cfg`; Geo/Whitelist-Reihenfolge beibehalten (vor WAF). |
-| Coraza/WAF-Regeln | `conf/coraza-spoa.yaml`, `coraza/rules/`. |
+| Coraza/WAF-Regeln | `conf/coraza-spoa.yaml`, `coraza/rules/coreruleset/` (Submodule), Anpassungen in `coraza/rules/custom/`. |
 | CI anpassen | `.github/workflows/ci.yml` (Tests, Docker-Builds). |
 
 ---
