@@ -7,6 +7,8 @@ import pytest
 
 from geo_manager.config import Config
 from geo_manager.validation import (
+    DEFAULT_HAPROXY_CRT_PATH,
+    ENV_HAPROXY_CRT_PATH_FOR_VALIDATION,
     PEER_LINE_1_TEMPLATE,
     PEER_LINE_2_TEMPLATE,
     PEER_LINE_3_TEMPLATE,
@@ -74,6 +76,21 @@ def test_get_processed_config_path_replaces_placeholders(tmp_path):
         assert "   server agt-1 10.0.0.1:50000" in content
         assert "   server agt-2\n" in content or "   server agt-2" in content
         assert "   server agt-3 10.0.0.3:50000" in content
+    finally:
+        os.unlink(path)
+
+
+def test_get_processed_config_path_replaces_crt_path_when_env_set(tmp_path, monkeypatch):
+    """When HAPROXY_CRT_PATH_FOR_VALIDATION is set, bind line uses that path for haproxy -c."""
+    monkeypatch.setenv(ENV_HAPROXY_CRT_PATH_FOR_VALIDATION, "/etc/ssl/haproxy-pem/haproxy.pem")
+    cfg = tmp_path / "haproxy.cfg"
+    cfg.write_text("bind :443 ssl crt " + DEFAULT_HAPROXY_CRT_PATH + "\n")
+    config = Config.from_env()
+    path = _get_processed_config_path(str(cfg), config)
+    try:
+        content = open(path).read()
+        assert "/etc/ssl/haproxy-pem/haproxy.pem" in content
+        assert DEFAULT_HAPROXY_CRT_PATH not in content
     finally:
         os.unlink(path)
 

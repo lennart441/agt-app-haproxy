@@ -96,7 +96,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256M
+          memory: 512M
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
       - NODE_PRIO=${NODE_PRIO:-1}
@@ -111,6 +111,8 @@ services:
       - MAP_DIR=/usr/local/etc/haproxy/maps
       - HAPROXY_CFG_PATH=/usr/local/etc/haproxy/haproxy.cfg
       - HAPROXY_SOCKET=/var/run/haproxy-stat/socket
+      # Für haproxy -c (Syntax-Check): Zertifikat unter diesem Pfad (ssl separat gemountet, /etc/ssl/certs = CA-Bundle)
+      - HAPROXY_CRT_PATH_FOR_VALIDATION=/etc/ssl/haproxy-pem/haproxy.pem
       - STAGE_DELAY_PRIO2_HOURS=${STAGE_DELAY_PRIO2_HOURS:-48}
       - STAGE_DELAY_PRIO3_HOURS=${STAGE_DELAY_PRIO3_HOURS:-96}
       - FETCH_INTERVAL_HOURS=${FETCH_INTERVAL_HOURS:-24}
@@ -137,7 +139,8 @@ services:
       - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
-      # Kein Mount von ./ssl nach /etc/ssl/certs: würde CA-Bundle überschreiben und HTTPS-Downloads (Geo-Quellen) brechen
+      # ssl nur unter /etc/ssl/haproxy-pem (nicht /etc/ssl/certs), damit CA-Bundle für HTTPS-Downloads erhalten bleibt
+      - ./ssl:/etc/ssl/haproxy-pem:ro
       - haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"

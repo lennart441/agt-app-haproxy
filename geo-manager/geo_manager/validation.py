@@ -21,6 +21,10 @@ PEER_LINE_1_TEMPLATE = "   server agt-1 172.20.0.1:50000"
 PEER_LINE_2_TEMPLATE = "   server agt-2 172.20.0.2:50000"
 PEER_LINE_3_TEMPLATE = "   server agt-3 172.20.0.3:50000"
 
+# In geo-manager container /etc/ssl/certs is the CA bundle (no haproxy.pem). For haproxy -c we substitute the cert path.
+DEFAULT_HAPROXY_CRT_PATH = "/etc/ssl/certs/haproxy.pem"
+ENV_HAPROXY_CRT_PATH_FOR_VALIDATION = "HAPROXY_CRT_PATH_FOR_VALIDATION"
+
 # Size file to persist previous geo.map size
 GEO_MAP_SIZE_FILE = "geo.map.size"
 
@@ -52,6 +56,9 @@ def _get_processed_config_path(cfg_path: str, config: "Config") -> str:
     content = content.replace(PEER_LINE_1_TEMPLATE, line1)
     content = content.replace(PEER_LINE_2_TEMPLATE, line2)
     content = content.replace(PEER_LINE_3_TEMPLATE, line3)
+    # So that haproxy -c finds the cert in geo-manager (ssl mounted at different path, not /etc/ssl/certs).
+    crt_path = os.environ.get(ENV_HAPROXY_CRT_PATH_FOR_VALIDATION, DEFAULT_HAPROXY_CRT_PATH)
+    content = content.replace(DEFAULT_HAPROXY_CRT_PATH, crt_path)
     fd, path = tempfile.mkstemp(suffix=".cfg", prefix="haproxy-")
     try:
         os.write(fd, content.encode("utf-8"))
