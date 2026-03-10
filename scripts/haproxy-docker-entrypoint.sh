@@ -43,6 +43,17 @@ sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|   server agt-3 172.20.0.3:50000|${LINE3}|" \
     "$CFG_SRC" > "$CFG_OUT"
 
+# Maps: Wenn geo.map/whitelist.map fehlen (z. B. nach Löschen oder Erststart), minimale Dateien anlegen,
+# damit HAProxy starten kann. Geo-Manager überschreibt sie später.
+MAP_DIR="${HAPROXY_MAP_DIR:-/usr/local/etc/haproxy/maps}"
+mkdir -p "$MAP_DIR"
+if [ ! -f "$MAP_DIR/geo.map" ]; then
+  printf '0.0.0.0/0\tXX\n' > "$MAP_DIR/geo.map"
+fi
+if [ ! -f "$MAP_DIR/whitelist.map" ]; then
+  touch "$MAP_DIR/whitelist.map"
+fi
+
 # Stats-Socket: Verzeichnis anlegen, Rechte setzen, dann HAProxy als User 99 starten.
 # chown 99:99 schlägt unter rootless Docker fehl → Fallback chmod 1777; setpriv startet HAProxy ohne root.
 SOCKET_DIR="${HAPROXY_SOCKET_DIR:-/var/run/haproxy-stat}"
