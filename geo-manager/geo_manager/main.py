@@ -4,6 +4,7 @@ Geo-Manager: HTTP server for /geo/status, /health, /metrics, /cluster and backgr
 import json
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -378,6 +379,13 @@ def main() -> None:
     config = Config.from_env()
     server = HTTPServer(("0.0.0.0", config.status_port), GeoStatusHandler)
     server.config = config  # type: ignore
+
+    def _shutdown(_signum=None, _frame=None) -> None:
+        logger.info("Received signal, shutting down gracefully")
+        server.shutdown()
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
 
     if config.am_i_master():
         t = threading.Thread(target=run_master_loop, args=(config,), daemon=True)

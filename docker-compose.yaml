@@ -46,6 +46,8 @@ services:
       retries: 3
       start_period: 10s
 
+    stop_grace_period: 30s
+
     restart: always
     depends_on:
       coraza-spoa:
@@ -68,6 +70,7 @@ services:
       dockerfile: coraza/Dockerfile.coraza
     container_name: coraza-spoa
     command: ["-config", "/etc/coraza-spoa/config.yaml"]
+    stop_grace_period: 15s
     volumes:
       - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
       - ./coraza/rules:/etc/coraza-spoa/rules:ro
@@ -147,6 +150,7 @@ services:
       - haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"
+    stop_grace_period: 15s
     restart: always
     networks:
       - security-net
@@ -176,6 +180,7 @@ services:
       # Let's Encrypt: CERT_LE_BASE_HOST=/etc/letsencrypt mounten, damit live/<domain>/ Symlinks
       # auf archive/<domain>/ im Container auflösen. Ohne BASE nur CERT_LE_DIR_HOST (live/domain).
       - ${CERT_LE_BASE_HOST:-${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}}:/certs:ro
+    stop_grace_period: 15s
     restart: always
     networks:
       - security-net

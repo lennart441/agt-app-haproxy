@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -269,6 +270,13 @@ def main() -> None:
     config = Config.from_env()
     server = HTTPServer(("0.0.0.0", config.status_port), CertHandler)
     server.config = config  # type: ignore[attr-defined]
+
+    def _shutdown(_signum=None, _frame=None) -> None:
+        logger.info("Received signal, shutting down gracefully")
+        server.shutdown()
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
 
     if config.am_i_master():
         logger.info(

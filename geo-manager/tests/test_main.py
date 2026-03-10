@@ -284,6 +284,23 @@ def test_main_starts_server_and_serve_forever():
     mock_server.serve_forever.assert_called_once()
 
 
+def test_main_signal_handler_calls_server_shutdown():
+    """Graceful shutdown: SIGTERM/SIGINT handler calls server.shutdown()."""
+    with patch("geo_manager.main.HTTPServer") as mock_http:
+        with patch("geo_manager.main.threading.Thread"):
+            with patch("geo_manager.main.signal.signal") as mock_signal:
+                mock_server = MagicMock()
+                mock_http.return_value = mock_server
+                mock_server.serve_forever.side_effect = StopIteration("stop")
+                with pytest.raises(StopIteration):
+                    from geo_manager.main import main
+                    main()
+                assert mock_signal.call_count >= 2
+                handler = mock_signal.call_args_list[0][0][1]
+                handler()
+                mock_server.shutdown.assert_called_once()
+
+
 def test_main_starts_follower_thread_when_not_master():
     with patch("geo_manager.main.HTTPServer") as mock_http:
         with patch("geo_manager.main.threading.Thread") as mock_thread:
