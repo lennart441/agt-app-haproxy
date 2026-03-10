@@ -180,6 +180,9 @@ services:
       # Let's Encrypt: CERT_LE_BASE_HOST=/etc/letsencrypt mounten, damit live/<domain>/ Symlinks
       # auf archive/<domain>/ im Container auflösen. Ohne BASE nur CERT_LE_DIR_HOST (live/domain).
       - ${CERT_LE_BASE_HOST:-${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}}:/certs:ro
+    # Port 8081 auf Host binden, damit Follower (agt-2/agt-3) den Master im WireGuard-Mesh erreichen können.
+    ports:
+      - "8081:8081"
     stop_grace_period: 15s
     restart: always
     networks:

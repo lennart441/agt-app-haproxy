@@ -314,42 +314,55 @@ def _master_fetch_validate_activate(config: Config) -> None:
     logger.info("Master: map activated and reloaded")
 
 
+def _run_follower_iteration(config: Config) -> None:
+    """Single follower iteration: check master, apply delay or bootstrap, fetch/activate if due."""
+    result = get_master_validated_at(
+        config.mesh_nodes, config.status_port
+    )
+    if result is None:
+        return
+    _master_ip, master_validated_at = result
+    delay_hours = config.stage_delay_hours_for_prio(config.node_prio)
+    if not should_follower_activate(
+        config.node_prio,
+        master_validated_at,
+        delay_hours,
+        local_validated_at=get_validated_at(),
+    ):
+        return
+    success = False
+    last_error: Optional[str] = None
+    for attempt in range(config.fetch_retries):
+        try:
+            _master_fetch_validate_activate(config)
+            success = True
+            break
+        except Exception as e:
+            last_error = str(e)
+            if attempt < config.fetch_retries - 1:
+                time.sleep(config.fetch_retry_delay_sec)
+    if not success and last_error:
+        _notify_fetch_failure(config, last_error)
+
+
 def run_follower_loop(config: Config) -> None:
-    """Follower: poll master's validated_at; when delay elapsed, fetch/validate/activate with retries."""
+    """Follower: poll master's validated_at; when delay elapsed (or bootstrap), fetch/validate/activate with retries."""
     try:
         os.nice(config.build_nice_level)
     except (AttributeError, OSError):
         pass
     if config.node_prio == 1:
         return
-    delay_hours = config.stage_delay_hours_for_prio(config.node_prio)
     poll_interval_sec = 3600
+    # Initial run immediately so agt-2/agt-3 get the map on first start (bootstrap)
+    try:
+        _run_follower_iteration(config)
+    except Exception as e:
+        logger.exception("Follower initial iteration error: %s", e)
     while True:
         time.sleep(poll_interval_sec)
         try:
-            result = get_master_validated_at(
-                config.mesh_nodes, config.status_port
-            )
-            if result is None:
-                continue
-            _master_ip, master_validated_at = result
-            if not should_follower_activate(
-                config.node_prio, master_validated_at, delay_hours
-            ):
-                continue
-            success = False
-            last_error: Optional[str] = None
-            for attempt in range(config.fetch_retries):
-                try:
-                    _master_fetch_validate_activate(config)
-                    success = True
-                    break
-                except Exception as e:
-                    last_error = str(e)
-                    if attempt < config.fetch_retries - 1:
-                        time.sleep(config.fetch_retry_delay_sec)
-            if not success and last_error:
-                _notify_fetch_failure(config, last_error)
+            _run_follower_iteration(config)
         except Exception as e:
             logger.exception("Follower loop error: %s", e)
 

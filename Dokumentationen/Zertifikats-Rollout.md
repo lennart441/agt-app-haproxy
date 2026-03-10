@@ -20,12 +20,13 @@ Der cert-manager ist bewusst einfach gehalten und folgt dem Muster des Geo-Manag
   - Stellt über `/cert/status` den aktuellen Zertifikats-Status bereit.
   - Stellt über `/cert/download` das aktuelle PEM bereit.
 - **Follower (Prio 2 und 3, `NODE_PRIO=2/3`)**:
-  - Fragen periodisch (`CERT_POLL_INTERVAL_SECONDS`) beim Master `/cert/status` ab.
-  - Warten die jeweils konfigurierte Verzögerung (`CERT_STAGE_DELAY_PRIO2_HOURS` / `CERT_STAGE_DELAY_PRIO3_HOURS`) ab, bevor sie ein neues Zertifikat übernehmen.
+  - Beim **ersten Start** (noch keine lokale PEM): Zertifikat sofort vom Master holen (Bootstrap), damit HAProxy starten kann.
+  - Danach: Fragen periodisch (`CERT_POLL_INTERVAL_SECONDS`) beim Master `/cert/status` ab.
+  - Warten die jeweils konfigurierte Verzögerung (`CERT_STAGE_DELAY_PRIO2_HOURS` / `CERT_STAGE_DELAY_PRIO3_HOURS`) ab, bevor sie ein **neues** Zertifikat (Update) übernehmen.
   - Laden bei Bedarf das PEM über `/cert/download` vom Master und schreiben es lokal nach `/etc/ssl/certs/haproxy.pem`.
 - **Kommunikation**:
   - Rein HTTP (kein TLS), aber ausschließlich im bereits gehärteten WireGuard-Mesh.
-  - Der Port (`CERT_STATUS_PORT`, Default 8081) wird **nicht** nach außen gemappt, sondern ist nur im Compose-Netz/auf dem Host erreichbar.
+  - Der Port (`CERT_STATUS_PORT`, Default 8081) ist in der `docker-compose.yaml` auf dem Host gebunden (`ports: 8081:8081`), damit Follower-Knoten (agt-2/agt-3) den cert-manager des Masters über die Mesh-IP (z. B. 172.20.0.1:8081) erreichen können. Zugriff per Firewall auf das Mesh-Netz (z. B. 172.20.0.0/24) beschränken.
 
 Der cert-manager führt **keine eigene ACME/Certbot-Logik** aus. Certbot bleibt auf dem Master-Host zuständig und legt die Zertifikate wie bisher unter `/etc/letsencrypt/live/<DOMAIN>/` ab. Der cert-manager liest diese Dateien nur aus einem Read-Only-Mount.
 
@@ -189,7 +190,7 @@ In `docker-compose.yaml` ist der cert-manager als eigener Dienst eingetragen:
 - Nutzung desselben Netzwerks `security-net`.
 - Gemeinsames Volume `./ssl:/etc/ssl/certs` mit HAProxy, sodass beide auf dieselbe PEM-Datei zugreifen.
 - Environment-Variablen wie oben beschrieben (`NODE_NAME`, `NODE_PRIO`, `MESH_NODES`, `CERT_*`).
-- Kein Port-Mapping nach außen – der HTTP-Dienst ist nur im Compose-Netz bzw. über den Host erreichbar.
+- Port 8081 ist auf dem Host gebunden, damit andere Knoten im WireGuard-Mesh den cert-manager erreichen können; Firewall-Zugriff auf das Mesh beschränken.
 
 Auf dem Master-Host muss zusätzlich ein Bind-Mount zu den Certbot-Dateien konfiguriert werden (siehe Beispiel in Abschnitt 2), damit cert-manager auf `fullchain.pem` und `privkey.pem` zugreifen kann.
 
@@ -204,7 +205,7 @@ Auf dem Master-Host muss zusätzlich ein Bind-Mount zu den Certbot-Dateien konfi
   - Aktueller Stand: Platzhalter, noch keine Signatur-Logik im Code – es werden lediglich Hashes (`version`) geprüft.
   - Der Key darf **nicht** ins Repository eingecheckt werden und sollte pro Cluster eindeutig sein.
 - **Ports:**
-  - `CERT_STATUS_PORT` (Default 8081) **nicht** nach außen mappen, sondern nur im internen Netzwerk nutzen.
+  - `CERT_STATUS_PORT` (Default 8081) ist in der Compose auf dem Host gemappt, damit Follower im Mesh den Master erreichen; Zugriff per Firewall auf Mesh-IPs beschränken.
   - Firewall-Regeln so setzen, dass ausschließlich das Mesh / die HAProxy-Knoten Zugriff haben.
 - **Fehlerhandling:**
   - Wenn der Master kein gültiges PEM erzeugen kann (fehlende oder leere Dateien, Formatfehler), wird kein neuer Zustand gesetzt.

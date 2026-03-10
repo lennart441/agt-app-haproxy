@@ -742,9 +742,10 @@ def test_run_follower_loop_failure_after_retries_sends_mail(mock_sleep, mock_get
     mock_get.return_value = ("172.20.0.1", datetime.now(timezone.utc) - timedelta(hours=50))
     mock_should.return_value = True
     mock_activate.side_effect = RuntimeError("fetch failed")
-    mock_sleep.side_effect = [None, None, StopIteration]  # poll_interval, retry_delay, next poll
+    mock_sleep.side_effect = [None, StopIteration]  # retry_delay in first iteration, then poll_interval
     with pytest.raises(StopIteration):
         run_follower_loop(config)
+    # Initial iteration runs immediately; 2 retries = 2 activate attempts (then sleep raises)
     assert mock_activate.call_count == 2
     mock_mail.assert_called_once()
 

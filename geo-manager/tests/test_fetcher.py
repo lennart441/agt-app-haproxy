@@ -297,13 +297,15 @@ def test_fetch_geo_from_single_url_range_format(mock_dl):
 
 def test_build_whitelist_map():
     out = build_whitelist_map(["8.8.8.8", "1.1.1.1"])
+    assert "127.0.0.1\t1" in out
     assert "8.8.8.8\t1" in out
     assert "1.1.1.1\t1" in out
 
 
 def test_build_whitelist_map_empty():
+    """Empty ANCHOR_IPS still yields 127.0.0.1 so localhost stays allowed."""
     out = build_whitelist_map([])
-    assert out == ""
+    assert "127.0.0.1\t1" in out
 
 
 def test_build_whitelist_map_skips_comments():

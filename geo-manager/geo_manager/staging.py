@@ -62,15 +62,22 @@ def should_follower_activate(
     my_prio: int,
     master_validated_at: Optional[datetime],
     stage_delay_hours: int,
+    *,
+    local_validated_at: Optional[datetime] = None,
 ) -> bool:
     """
     Follower may activate only if master's validated_at is at least stage_delay_hours ago.
+    Bootstrap: If the follower has never activated (local_validated_at is None), activate
+    immediately when the master has data. Staged delay applies only to later updates.
     my_prio 1: always True (master activates immediately, so we don't use this for master).
     """
     if my_prio == 1:
         return True
     if master_validated_at is None:
         return False
+    # Initial rollout: no local map yet → adopt immediately
+    if local_validated_at is None:
+        return True
     if stage_delay_hours <= 0:
         return True
     now = datetime.now(timezone.utc)

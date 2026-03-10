@@ -96,16 +96,44 @@ def test_should_follower_activate_no_master_validated_at():
 
 
 def test_should_follower_activate_delay_zero():
-    assert should_follower_activate(2, datetime.now(timezone.utc), 0) is True
+    """Delay 0 → activate; with local_validated_at set so the delay branch is hit."""
+    now = datetime.now(timezone.utc)
+    assert should_follower_activate(2, now, 0) is True
+    # Update mode with delay 0: still True (covers stage_delay_hours <= 0 return)
+    assert should_follower_activate(2, now, 0, local_validated_at=now) is True
 
 
 def test_should_follower_activate_elapsed():
+    """Update mode: master validated 50h ago, delay 48h → activate."""
     from datetime import timedelta
     old = datetime.now(timezone.utc) - timedelta(hours=50)
-    assert should_follower_activate(2, old, 48) is True
+    local = datetime.now(timezone.utc) - timedelta(hours=24)
+    assert should_follower_activate(2, old, 48, local_validated_at=local) is True
 
 
 def test_should_follower_activate_not_elapsed():
+    """With local_validated_at set (update mode), delay applies; 1h ago < 48h → False."""
     from datetime import timedelta
     recent = datetime.now(timezone.utc) - timedelta(hours=1)
-    assert should_follower_activate(2, recent, 48) is False
+    local = datetime.now(timezone.utc) - timedelta(hours=24)
+    assert should_follower_activate(2, recent, 48, local_validated_at=local) is False
+
+
+def test_should_follower_activate_bootstrap():
+    """Bootstrap: no local map yet (local_validated_at=None) → activate immediately when master has data."""
+    from datetime import timedelta
+    recent = datetime.now(timezone.utc) - timedelta(hours=1)
+    assert should_follower_activate(2, recent, 48, local_validated_at=None) is True
+    # No master data → still False
+    assert should_follower_activate(2, None, 48, local_validated_at=None) is False
+
+
+def test_should_follower_activate_update_mode_elapsed_hours():
+    """Update mode: local_validated_at set; elapsed hours >= delay → True (covers delay calculation)."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    master_old = now - timedelta(hours=100)
+    local_any = now - timedelta(hours=1)
+    assert should_follower_activate(2, master_old, 48, local_validated_at=local_any) is True
+    master_recent = now - timedelta(hours=1)
+    assert should_follower_activate(2, master_recent, 48, local_validated_at=local_any) is False

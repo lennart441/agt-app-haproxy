@@ -11,7 +11,8 @@ Content-Type: text/html; charset=utf-8
 </head>
 <body>
   <h1>403 Forbidden</h1>
-  <p>Access from your country or region is not permitted.</p>
-  <p>If you believe this is an error, please contact the service operator.</p>
+  <p>Access from your country or region is not permitted (origin not allowed).</p>
+  <p>If you believe this is an error, check: Geo-Manager has populated <code>geo.map</code> on the master; for testing you can set <code>ANCHOR_IPS</code> to your IP in .env so it is whitelisted.</p>
+  <p>Contact the service operator if the problem persists.</p>
 </body>
 </html>

@@ -6,6 +6,7 @@ from cert_manager.follower import (
     _parse_iso8601,
     download_cert_from_master,
     get_master_status,
+    run_follower_once,
 )
 from cert_manager.state import CertState, compute_version
 
@@ -190,4 +191,69 @@ def test_should_activate_master_and_zero_delay():
     cfg.stage_delay_prio2_hours = 1
     past_state = CertState(version="v", validated_since=now.replace(year=now.year - 1))
     assert should_activate(cfg, past_state) is True
+
+
+def test_run_follower_once_bootstrap_no_local_pem(monkeypatch, tmp_path):
+    """Bootstrap: Keine lokale PEM → sofort vom Master holen (ohne Staged-Delay)."""
+    target_pem = tmp_path / "haproxy.pem"
+    assert not target_pem.exists()
+    cfg = Config.from_env()
+    cfg.cert_is_master = False
+    cfg.mesh_nodes = ["10.0.0.1"]
+    cfg.target_pem_path = str(target_pem)
+    cfg.stage_delay_prio2_hours = 1
+    cfg.node_prio = 2
+    pem_bytes = b"-----BEGIN CERTIFICATE-----\ndummy\n-----END CERTIFICATE-----"
+    version = compute_version(pem_bytes)
+    status_body = json.dumps({
+        "node_prio": 1,
+        "node_name": "agt-1",
+        "cert_is_master": True,
+        "version": version,
+        "validated_since": datetime.now(timezone.utc).isoformat(),
+    }).encode("utf-8")
+
+    def fake_http_get(host, port, path, timeout=5.0):
+        if "status" in path:
+            return 200, status_body
+        if "download" in path:
+            return 200, pem_bytes
+        return 404, b""
+
+    monkeypatch.setattr("cert_manager.follower._http_get", fake_http_get)
+    ok = run_follower_once(cfg)
+    assert ok is True
+    assert target_pem.exists()
+    assert target_pem.read_bytes() == pem_bytes
+
+
+def test_run_follower_once_respects_delay_when_pem_exists(monkeypatch, tmp_path):
+    """Wenn lokale PEM existiert: Staged-Delay einhalten, ohne Delay kein Update."""
+    target_pem = tmp_path / "haproxy.pem"
+    target_pem.write_bytes(b"existing-pem")
+    cfg = Config.from_env()
+    cfg.cert_is_master = False
+    cfg.mesh_nodes = ["10.0.0.1"]
+    cfg.target_pem_path = str(target_pem)
+    cfg.stage_delay_prio2_hours = 1
+    cfg.node_prio = 2
+    # Master-State mit „gerade eben“ validiert → should_activate = False
+    now = datetime.now(timezone.utc).isoformat()
+    status_body = json.dumps({
+        "node_prio": 1,
+        "node_name": "agt-1",
+        "cert_is_master": True,
+        "version": "new-version",
+        "validated_since": now,
+    }).encode("utf-8")
+
+    def fake_http_get(host, port, path, timeout=5.0):
+        if "status" in path:
+            return 200, status_body
+        return 404, b""
+
+    monkeypatch.setattr("cert_manager.follower._http_get", fake_http_get)
+    ok = run_follower_once(cfg)
+    assert ok is False
+    assert target_pem.read_bytes() == b"existing-pem"
 

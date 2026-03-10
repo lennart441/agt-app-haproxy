@@ -137,11 +137,14 @@ def _sort_key_network(line: str) -> Tuple[int, ...]:
 
 
 def build_whitelist_map(anchor_ips: List[str]) -> str:
-    """Build whitelist map content: one line per IP 'ip\t1' for map_ip -m found."""
-    lines = []
-    for ip in anchor_ips:
+    """Build whitelist map content: one line per IP 'ip\t1' for map_ip -m found.
+    Always includes 127.0.0.1 so localhost stays allowed even when ANCHOR_IPS is empty."""
+    seen: set[str] = set()
+    lines: List[str] = []
+    for ip in ["127.0.0.1", *anchor_ips]:
         ip = ip.strip()
-        if ip and not ip.startswith("#"):
+        if ip and not ip.startswith("#") and ip not in seen:
+            seen.add(ip)
             lines.append(f"{ip}\t1")
     return "\n".join(lines) + "\n" if lines else ""
 

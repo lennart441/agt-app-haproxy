@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Optional, Tuple
@@ -136,6 +137,9 @@ def run_follower_once(config: Config) -> bool:
     """
     Single follower iteration: try to fetch PEM from master if due.
     Returns True if a cert was activated, False otherwise.
+
+    Bootstrap: If no local PEM exists yet, fetch immediately from master
+    (no staged delay). Staged delay applies only to updates (new version).
     """
     if config.am_i_master() or not config.mesh_nodes:
         return False
@@ -143,7 +147,8 @@ def run_follower_once(config: Config) -> bool:
     if result is None:
         return False
     master_ip, master_state = result
-    if not should_activate(config, master_state):
+    need_bootstrap = not os.path.exists(config.target_pem_path)
+    if not need_bootstrap and not should_activate(config, master_state):
         return False
     pem = download_cert_from_master(master_ip, config, master_state.version)
     if pem is None:
