@@ -33,6 +33,16 @@ def test_geo_status_handler_404():
     handler.send_error.assert_called_once_with(404)
 
 
+def test_geo_deploy_now_post_404():
+    """POST to path other than /geo/deploy-now returns 404."""
+    handler = MagicMock()
+    handler.path = "/other"
+    handler.server = MagicMock()
+    handler.server.config = MagicMock()
+    GeoStatusHandler.do_POST(handler)
+    handler.send_error.assert_called_once_with(404)
+
+
 def test_geo_deploy_now_forbidden_for_follower():
     """POST /geo/deploy-now returns 403 on non-master nodes."""
     handler = MagicMock()
@@ -41,6 +51,8 @@ def test_geo_deploy_now_forbidden_for_follower():
     config = MagicMock()
     config.am_i_master.return_value = False
     handler.server.config = config
+    # Bind real method so do_POST's self._handle_geo_deploy_now runs the implementation
+    handler._handle_geo_deploy_now = GeoStatusHandler._handle_geo_deploy_now.__get__(handler, GeoStatusHandler)
     GeoStatusHandler.do_POST(handler)
     handler.send_error.assert_called_once()
     code, _msg = handler.send_error.call_args[0]
@@ -55,6 +67,8 @@ def test_geo_deploy_now_master_success(monkeypatch):
     config = Config.from_env()
     config.node_prio = 1
     handler.server.config = config
+    # Bind real method so do_POST's self._handle_geo_deploy_now runs the implementation
+    handler._handle_geo_deploy_now = GeoStatusHandler._handle_geo_deploy_now.__get__(handler, GeoStatusHandler)
 
     from geo_manager import main as main_mod
 
@@ -66,6 +80,30 @@ def test_geo_deploy_now_master_success(monkeypatch):
     monkeypatch.setattr(main_mod, "_master_fetch_validate_activate", fake_master_activate)
     GeoStatusHandler.do_POST(handler)
     assert called.get("run") is True
+
+
+def test_geo_deploy_now_master_exception_returns_500(monkeypatch):
+    """POST /geo/deploy-now on master when _master_fetch_validate_activate raises returns 500."""
+    handler = MagicMock()
+    handler.path = "/geo/deploy-now"
+    handler.server = MagicMock()
+    config = Config.from_env()
+    config.node_prio = 1
+    handler.server.config = config
+    handler._handle_geo_deploy_now = GeoStatusHandler._handle_geo_deploy_now.__get__(handler, GeoStatusHandler)
+
+    from geo_manager import main as main_mod
+
+    def fake_master_activate_raise(cfg):
+        raise RuntimeError("fetch failed")
+
+    monkeypatch.setattr(main_mod, "_master_fetch_validate_activate", fake_master_activate_raise)
+    GeoStatusHandler.do_POST(handler)
+    handler.send_response.assert_called_once_with(500)
+    handler.wfile.write.assert_called_once()
+    written = handler.wfile.write.call_args[0][0]
+    assert b"Geo deploy failed" in written
+    assert b"fetch failed" in written
 
 
 def test_health_handler_200():
