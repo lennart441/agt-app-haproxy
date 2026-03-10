@@ -163,9 +163,9 @@ services:
       - CERT_POLL_INTERVAL_SECONDS=${CERT_POLL_INTERVAL_SECONDS:-300}
     volumes:
       - ./ssl:/etc/ssl/certs
-      # Certbot-Verzeichnis auf allen Knoten gleich mounten; auf Nicht-Master-Knoten kann
-      # der Ordner leer sein, stört den cert-manager aber nicht.
-      - ${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}:/certs:ro
+      # Let's Encrypt: CERT_LE_BASE_HOST=/etc/letsencrypt mounten, damit live/<domain>/ Symlinks
+      # auf archive/<domain>/ im Container auflösen. Ohne BASE nur CERT_LE_DIR_HOST (live/domain).
+      - ${CERT_LE_BASE_HOST:-${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}}:/certs:ro
     restart: always
     networks:
       - security-net

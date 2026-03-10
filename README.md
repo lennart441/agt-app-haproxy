@@ -20,16 +20,16 @@ Einheitliches Docker-Setup für HAProxy 3+ mit Coraza WAF und Geo-Manager (Safet
 ## Deployment
 
 1. Repo klonen, in das Verzeichnis wechseln.
-2. `.env` anlegen (z. B. aus `.env.example` kopieren) und pro Server anpassen:
+2. `.env` anlegen: Pro Server die passende Konfiguration verwenden. Im Repo können z. B. `1.env`, `2.env`, `3.env` als Vorlagen pro Knoten liegen; auf dem Server wird die jeweilige Datei als `.env` abgelegt (z. B. `1.env` → `.env` auf agt-1). Inhalt pro Server anpassen:
    - **AGT-1**: `NODE_NAME=agt-1`, `NODE_PRIO=1`
    - **AGT-2**: `NODE_NAME=agt-2`, `NODE_PRIO=2`
    - **AGT-3**: `NODE_NAME=agt-3`, `NODE_PRIO=3`
    - `MESH_NODES` = WireGuard-IPs aller drei (z. B. `172.20.0.1,172.20.0.2,172.20.0.3`)
    - `ANCHOR_IPS` = Komma-getrennte IPs, die in der Geo-Liste als DE/EU gelten müssen (Plausibilitäts-Check).
    - `GEO_SOURCE_URL` = URL zur Geo-IP-CSV (oder `GEO_BLOCKS_URL` + `GEO_LOCATIONS_URL` für MaxMind-Style).
-3. `ssl/haproxy.pem` bereitstellen.
+3. **Zertifikate:** Entweder `ssl/haproxy.pem` manuell bereitstellen **oder** cert-manager nutzen (Let's Encrypt/Certbot). Bei Certbot: In der `.env` `CERT_LE_BASE_HOST=/etc/letsencrypt` setzen (nicht nur `live/domain`), damit die Symlinks in `live/<domain>/` auf `archive/<domain>/` im Container auflösen. Zusätzlich `CERT_SOURCE_FULLCHAIN=/certs/live/<domain>/fullchain.pem` und `CERT_SOURCE_PRIVKEY=/certs/live/<domain>/privkey.pem` (z. B. `agt-app.de`).
 4. Coraza-Regeln: Submodule initialisieren: `git submodule update --init --recursive` (siehe `coraza/rules/README.md`).
-5. Start: `docker compose up -d`.
+5. Start: `docker compose up -d` (Compose lädt die `.env` im Projektordner automatisch).
 
 Auf jedem der drei Server denselben Ablauf mit jeweils passender `.env` ausführen. Es wird nur eine `docker-compose.yaml` verwendet.
 

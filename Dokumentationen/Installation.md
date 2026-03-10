@@ -85,7 +85,7 @@ mkdir -p ssl
 chmod 600 ssl/haproxy.pem
 ```
 
-- **Hinweis cert-manager:** Wenn der cert-manager im Cluster verwendet wird, schreibt dieser das kombinierte PEM automatisch nach `ssl/haproxy.pem` (bzw. den gemounteten Pfad). In diesem Fall muss die Datei nicht mehr manuell kopiert werden; stattdessen sorgt Certbot auf dem Masterknoten für frische Zertifikate, und der cert-manager verteilt sie im Cluster.
+- **Hinweis cert-manager:** Wenn der cert-manager im Cluster verwendet wird, schreibt dieser das kombinierte PEM automatisch nach `ssl/haproxy.pem`. Certbot legt unter `/etc/letsencrypt/live/<domain>/` nur Symlinks auf `../../archive/<domain>/` – damit diese im Container auflösen, muss das **gesamte** Let’s-Encrypt-Verzeichnis gemountet werden: In der `.env` `CERT_LE_BASE_HOST=/etc/letsencrypt` setzen (nicht nur `CERT_LE_DIR_HOST=/etc/letsencrypt/live/...`) und `CERT_SOURCE_FULLCHAIN=/certs/live/<domain>/fullchain.pem` sowie `CERT_SOURCE_PRIVKEY=/certs/live/<domain>/privkey.pem` (z. B. Domain `agt-app.de`).
 
 ```bash
 ```
@@ -161,6 +161,8 @@ docker compose up -d --build
 ```bash
 docker compose up -d
 ```
+
+  Compose liest die `.env` im Projektverzeichnis automatisch. Auf dem Server liegt dort die für diesen Knoten passende Konfiguration (z. B. von `1.env` für agt-1 als `.env` kopiert). Wichtig für cert-manager: In dieser `.env` muss `CERT_LE_DIR_HOST` auf das Let's-Encrypt-Live-Verzeichnis zeigen (z. B. `/etc/letsencrypt/live/agt-app.de`), sonst findet der cert-manager unter `/certs/` keine Dateien und HAProxy startet mit „unable to stat SSL certificate“.
 
 - **Ablauf:** Compose startet die Dienste in Abhängigkeitsreihenfolge (coraza-spoa → haproxy → geo-manager). Der Geo-Manager (Master) lädt beim ersten Lauf die Geo-Daten, validiert sie, schreibt die Maps und löst einen HAProxy-Reload aus. Das kann beim ersten Mal etwas dauern.
 
