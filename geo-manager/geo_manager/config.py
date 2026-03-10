@@ -19,7 +19,8 @@ class Config:
     mesh_nodes: List[str]
     anchor_ips: List[str]
     geo_source_url: str
-    geo_blocks_ipv6_url: Optional[str]  # optional IPv6 blocks CSV, merged into geo.map
+    geo_source_ipv6_url: Optional[str]  # optional second CSV (same format as GEO_SOURCE_URL), merged into geo.map
+    geo_blocks_ipv6_url: Optional[str]  # optional IPv6 blocks CSV (MaxMind format), merged when using GEO_BLOCKS_URL
     map_dir: str
     haproxy_cfg_path: str
     haproxy_socket: str
@@ -128,6 +129,7 @@ class Config:
             mesh_nodes=mesh_nodes,
             anchor_ips=anchor_ips,
             geo_source_url=os.environ.get("GEO_SOURCE_URL", "").strip(),
+            geo_source_ipv6_url=os.environ.get("GEO_SOURCE_IPV6_URL", "").strip() or None,
             geo_blocks_ipv6_url=os.environ.get("GEO_BLOCKS_IPV6_URL", "").strip() or None,
             map_dir=os.environ.get("MAP_DIR", "/usr/local/etc/haproxy/maps"),
             haproxy_cfg_path=os.environ.get(

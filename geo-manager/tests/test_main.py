@@ -398,6 +398,41 @@ def test_master_fetch_validate_activate_success(
     assert not (tmp_path / "geo.map.bak").exists()
 
 
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.merge_geo_map_contents")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
+    mock_single, mock_merge, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload, tmp_path
+):
+    """When GEO_SOURCE_IPV6_URL is set, both URLs are fetched and merged."""
+    mock_single.side_effect = ["1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n", "2001:db8::/32\tDE\n"]
+    mock_merge.return_value = "1.0.0.0/24\tDE\n8.8.8.8/32\tDE\n2001:db8::/32\tDE\n"
+    mock_whitelist.return_value = "8.8.8.8\t1\n"
+    mock_size.return_value = True
+    mock_anchors.return_value = True
+    mock_syntax.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.geo_source_ipv6_url = "http://example.com/geo-ipv6.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "haproxy.cfg")
+    config.anchor_ips = ["8.8.8.8"]
+    (tmp_path / "geo.map").write_text("old")
+    _master_fetch_validate_activate(config)
+    assert mock_single.call_count == 2
+    mock_merge.assert_called_once()
+    call_args = mock_merge.call_args[0]
+    assert "8.8.8.8/32" in call_args[0]
+    assert "2001:db8::/32" in call_args[1]
+    mock_reload.assert_called_once()
+
+
 @patch("geo_manager.main.fetch_geo_from_single_url")
 def test_master_fetch_validate_activate_empty_content(mock_single):
     mock_single.return_value = "   \n"
@@ -418,15 +453,48 @@ def test_master_fetch_validate_activate_size_fail(mock_single, mock_size):
         _master_fetch_validate_activate(config)
 
 
+@patch("geo_manager.main.trigger_reload")
+@patch("geo_manager.main.validate_syntax")
+@patch("geo_manager.main.validate_anchors")
+@patch("geo_manager.main.validate_size")
+@patch("geo_manager.main.write_maps")
+@patch("geo_manager.main.build_whitelist_map")
+@patch("geo_manager.main.fetch_geo_from_single_url")
+def test_master_fetch_validate_activate_anchor_ips_empty_skips_check(
+    mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax, mock_reload,
+    tmp_path,
+):
+    """When anchor_ips is empty, validate_anchors is not called (check skipped)."""
+    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_whitelist.return_value = ""
+    mock_size.return_value = True
+    mock_syntax.return_value = True
+    mock_reload.return_value = True
+    config = Config.from_env()
+    config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = []
+    (tmp_path / "geo.map").write_text("old")
+    _master_fetch_validate_activate(config)
+    mock_anchors.assert_not_called()
+    mock_reload.assert_called_once()
+
+
 @patch("geo_manager.main.validate_anchors")
 @patch("geo_manager.main.validate_size")
 @patch("geo_manager.main.fetch_geo_from_single_url")
-def test_master_fetch_validate_activate_anchor_fail(mock_single, mock_size, mock_anchors):
+def test_master_fetch_validate_activate_anchor_fail(
+    mock_single, mock_size, mock_anchors, tmp_path
+):
     mock_single.return_value = "1.0.0.0/24\tDE\n"
     mock_size.return_value = True
     mock_anchors.return_value = False
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
+    config.map_dir = str(tmp_path)
+    config.haproxy_cfg_path = str(tmp_path / "x.cfg")
+    config.anchor_ips = ["8.8.8.8"]
     with pytest.raises(RuntimeError, match="Anchor check"):
         _master_fetch_validate_activate(config)
 

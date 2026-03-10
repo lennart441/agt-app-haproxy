@@ -13,6 +13,7 @@ haproxy.pem
 
 # Env (sensitive)
 .env
+*.env
 !.env.example
 scripts/cert-deploy.env
 

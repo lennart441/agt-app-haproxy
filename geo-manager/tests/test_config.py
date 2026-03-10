@@ -19,6 +19,7 @@ def test_config_from_env_defaults():
     assert config.mesh_nodes == []
     assert config.anchor_ips == []
     assert config.geo_source_url == ""
+    assert config.geo_source_ipv6_url is None
     assert config.geo_blocks_ipv6_url is None
     assert config.map_dir == "/usr/local/etc/haproxy/maps"
     assert "haproxy.cfg" in config.haproxy_cfg_path
@@ -141,6 +142,12 @@ def test_config_mail_and_cluster_defaults(monkeypatch):
     assert config.mail_to == ["a@x.com", "b@x.com"]
     assert config.cluster_health_interval_hours == 24.0
     assert config.cluster_health_timeout_sec == 10.0
+
+
+def test_config_geo_source_ipv6_url(monkeypatch):
+    monkeypatch.setenv("GEO_SOURCE_IPV6_URL", "https://example.com/geo-ipv6.csv")
+    config = Config.from_env()
+    assert config.geo_source_ipv6_url == "https://example.com/geo-ipv6.csv"
 
 
 def test_config_geo_blocks_ipv6_url(monkeypatch):

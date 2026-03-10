@@ -115,7 +115,7 @@ def validate_anchors(
 ) -> bool:
     """
     Every anchor IP must resolve to an allowed country in the new map.
-    Returns True if all anchors are allowed.
+    Returns True if all anchors are allowed. If anchor_ips is empty, returns True (check skipped).
     """
     for ip in anchor_ips:
         ip = ip.strip()

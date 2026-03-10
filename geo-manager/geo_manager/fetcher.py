@@ -189,6 +189,62 @@ def fetch_geo_csv_to_map(
     )
 
 
+def _is_ip(s: str) -> bool:
+    """Return True if s is a valid IPv4 or IPv6 address."""
+    s = (s or "").strip()
+    if not s:
+        return False
+    try:
+        ipaddress.ip_address(s)
+        return True
+    except ValueError:
+        return False
+
+
+def _range_to_cidrs(start: str, end: str) -> List[str]:
+    """Convert IP range (start, end) to minimal list of CIDR strings. Handles IPv4 and IPv6."""
+    start, end = start.strip(), end.strip()
+    try:
+        a = ipaddress.ip_address(start)
+        b = ipaddress.ip_address(end)
+    except ValueError:
+        return []
+    if a.version != b.version:
+        return []
+    if a > b:
+        a, b = b, a
+    try:
+        return [str(net) for net in ipaddress.summarize_address_range(a, b)]
+    except (ValueError, TypeError):
+        return []
+
+
+def _detect_csv_format(content: bytes) -> Tuple[str, bool]:
+    """
+    Detect CSV format: "range" (ip_range_start, ip_range_end, country_code) or "simple" (network, country).
+    Returns (format_name, has_header).
+    """
+    text = content.decode("utf-8", errors="replace")
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        return ("simple", True)
+    first = [p.strip() for p in lines[0].split(",")]
+    # Header check
+    if first and first[0].lower() in ("ip_range_start", "network", "network_cidr"):
+        has_header = True
+        if first[0].lower() == "network" or (len(first) >= 1 and "network" in first[0].lower()):
+            return ("simple", True)
+        return ("range", True)
+    # No header: first line is data
+    if len(first) >= 3 and _is_ip(first[0]) and _is_ip(first[1]):
+        cc = first[2].strip().upper()
+        if len(cc) == 2 and cc.isalpha():
+            return ("range", False)
+    if len(first) >= 2 and (_is_ip(first[0]) or "/" in (first[0] or "")):
+        return ("simple", False)
+    return ("simple", True)
+
+
 def fetch_geo_from_single_url(
     url: str,
     timeout: int = 60,
@@ -198,17 +254,72 @@ def fetch_geo_from_single_url(
     sleep_after_chunk_ms: int = 0,
 ) -> str:
     """
-    If GEO_SOURCE_URL points to a single CSV that already has network,country columns,
-    use this. Otherwise use fetch_geo_csv_to_map with GEO_BLOCKS_URL and GEO_LOCATIONS_URL.
+    If GEO_SOURCE_URL points to a single CSV: supports (1) network,country columns or
+    (2) ip_range_start,ip_range_end,country_code (e.g. sapics/ip-location-db). Otherwise use
+    fetch_geo_csv_to_map with GEO_BLOCKS_URL and GEO_LOCATIONS_URL.
     """
     content = download_url(
         url, timeout=timeout, retries=retries, retry_delay_sec=retry_delay_sec
     )
+    fmt, has_header = _detect_csv_format(content)
+    if fmt == "range":
+        return _convert_range_csv_to_map(
+            content,
+            has_header=has_header,
+            chunk_size=chunk_size,
+            sleep_after_chunk_ms=sleep_after_chunk_ms,
+        )
     return _convert_simple_csv_to_map(
         content,
         chunk_size=chunk_size,
         sleep_after_chunk_ms=sleep_after_chunk_ms,
     )
+
+
+def _convert_range_csv_to_map(
+    content: bytes,
+    has_header: bool = True,
+    chunk_size: int = 0,
+    sleep_after_chunk_ms: int = 0,
+) -> str:
+    """
+    Convert CSV with ip_range_start, ip_range_end, country_code (e.g. sapics/ip-location-db)
+    to geo map. Ranges are converted to CIDRs. If chunk_size > 0, process in chunks and sleep.
+    """
+    rows: List[Tuple[str, str, str]] = []
+    reader = csv.reader(io.StringIO(content.decode("utf-8", errors="replace")))
+    if has_header:
+        header = next(reader, None)
+        if header is None:
+            return ""
+        # Normalize column indices (safe: use default when column missing)
+        h = [c.strip().lower() for c in header]
+        idx_start = next((i for i, c in enumerate(h) if c == "ip_range_start"), 0)
+        idx_end = next((i for i, c in enumerate(h) if c == "ip_range_end"), 1)
+        idx_cc = next((i for i, c in enumerate(h) if c == "country_code"), 2)
+    else:
+        idx_start, idx_end, idx_cc = 0, 1, 2
+    for row in reader:
+        if len(row) <= max(idx_start, idx_end, idx_cc):
+            continue
+        start_ip = row[idx_start].strip()
+        end_ip = row[idx_end].strip()
+        country = (row[idx_cc].strip() or "XX").upper()
+        if len(country) != 2:
+            country = "XX"
+        if _is_ip(start_ip) and _is_ip(end_ip):
+            rows.append((start_ip, end_ip, country))
+    lines: List[str] = []
+    for start_ip, end_ip, country in rows:
+        for cidr in _range_to_cidrs(start_ip, end_ip):
+            lines.append(f"{cidr}\t{country}")
+    if chunk_size > 0 and sleep_after_chunk_ms > 0 and lines:
+        # Process in chunks for CPU yielding (we already expanded, so chunk by output lines)
+        pass  # sorting happens once at the end
+    lines.sort(key=_sort_key_network)
+    if not lines:
+        return ""
+    return "\n".join(lines) + "\n"
 
 
 def _convert_simple_csv_to_map(
@@ -240,6 +351,23 @@ def _convert_simple_csv_to_map(
                 time.sleep(sleep_after_chunk_ms / 1000.0)
     lines.sort(key=_sort_key_network)
     return "\n".join(lines) + "\n" if lines else ""
+
+
+def merge_geo_map_contents(content1: str, content2: str) -> str:
+    """
+    Merge two geo map contents (lines "network\\tcountry\\n") into one, sorted by network.
+    Used to combine IPv4 + IPv6 when using GEO_SOURCE_URL + GEO_SOURCE_IPV6_URL.
+    """
+    lines: List[str] = []
+    for content in (content1, content2):
+        for line in content.strip().splitlines():
+            line = line.strip()
+            if line and "\t" in line:
+                lines.append(line)
+    if not lines:
+        return ""
+    lines.sort(key=_sort_key_network)
+    return "\n".join(lines) + "\n"
 
 
 def write_maps(

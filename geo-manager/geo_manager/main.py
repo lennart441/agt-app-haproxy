@@ -22,6 +22,7 @@ from .fetcher import (
     build_whitelist_map,
     fetch_geo_csv_to_map,
     fetch_geo_from_single_url,
+    merge_geo_map_contents,
     write_maps,
 )
 from .notify import send_failure_mail
@@ -231,6 +232,16 @@ def _master_fetch_validate_activate(config: Config) -> None:
             chunk_size=config.build_chunk_size,
             sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
         )
+        if config.geo_source_ipv6_url:
+            geo_ipv6 = fetch_geo_from_single_url(
+                config.geo_source_ipv6_url,
+                retries=retries,
+                retry_delay_sec=retry_delay,
+                chunk_size=config.build_chunk_size,
+                sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
+            )
+            if geo_ipv6.strip():
+                geo_content = merge_geo_map_contents(geo_content, geo_ipv6)
 
     if not geo_content.strip():
         raise RuntimeError("Fetched geo content is empty")
@@ -238,7 +249,9 @@ def _master_fetch_validate_activate(config: Config) -> None:
     if not validate_size(geo_content, config.map_dir, config.size_deviation_threshold):
         raise RuntimeError("Size check failed")
 
-    if not validate_anchors(geo_content, config.anchor_ips, ALLOWED_COUNTRY_CODES):
+    if config.anchor_ips and not validate_anchors(
+        geo_content, config.anchor_ips, ALLOWED_COUNTRY_CODES
+    ):
         raise RuntimeError("Anchor check failed")
 
     geo_map_path = os.path.join(config.map_dir, "geo.map")
