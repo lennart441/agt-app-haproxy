@@ -58,8 +58,30 @@ def test_trigger_reload_failure(mock_run, mock_exists):
 
 @patch("os.path.exists")
 @patch("geo_manager.reload.subprocess.run")
+def test_trigger_reload_empty_response_exit0_assumes_success(mock_run, mock_exists):
+    """Leerer Output bei exit 0 (Master-CLI liefert oft nichts) → True (Erfolg angenommen)."""
+    mock_exists.return_value = True
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "", "stderr": ""}
+    )()
+    assert trigger_reload("/var/run/haproxy.sock") is True
+
+
+@patch("os.path.exists")
+@patch("geo_manager.reload.subprocess.run")
+def test_trigger_reload_success_1_in_stderr_returns_true(mock_run, mock_exists):
+    """Success=1 in stderr (nicht nur stdout) → True."""
+    mock_exists.return_value = True
+    mock_run.return_value = type(
+        "R", (), {"returncode": 0, "stdout": "", "stderr": "Success=1\n"}
+    )()
+    assert trigger_reload("/var/run/haproxy.sock") is True
+
+
+@patch("os.path.exists")
+@patch("geo_manager.reload.subprocess.run")
 def test_trigger_reload_unclear_response_returns_false(mock_run, mock_exists):
-    """Antwort ohne Success=1/0 (z. B. alter Stats-Socket) → False."""
+    """Antwort ohne Success=1/0 (z. B. unbekanntes Kommando) → False."""
     mock_exists.return_value = True
     mock_run.return_value = type(
         "R", (), {"returncode": 0, "stdout": "Unknown command\n", "stderr": ""}

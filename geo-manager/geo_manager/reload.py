@@ -35,18 +35,26 @@ def trigger_reload(socket_path: str, wait_for_socket_sec: int = 30) -> bool:
         )
         out = (result.stdout or "").strip()
         err = (result.stderr or "").strip()
+        combined = f"{out}\n{err}".strip()
         if result.returncode != 0:
             logger.error("socat reload failed (code %s): %s", result.returncode, err or out)
             return False
-        if "Success=1" in out:
+        if "Success=1" in combined:
             logger.debug("HAProxy reload Success=1")
             return True
-        if "Success=0" in out:
-            logger.error("HAProxy reload Success=0 (new config/worker failed). stdout: %s", out)
-            if err:
-                logger.error("HAProxy reload stderr: %s", err)
+        if "Success=0" in combined:
+            logger.error("HAProxy reload Success=0 (new config/worker failed). %s", combined)
             return False
-        logger.warning("HAProxy reload response unclear (no Success=1/0). stdout: %r", out)
+        # Master-CLI kann Success=1 teils nicht in unser stdout liefern (Leer/Stderr);
+        # bei returncode 0 und leerem Output war der Reload in der Praxis erfolgreich.
+        if not combined:
+            logger.info(
+                "HAProxy reload: no Success=1/0 in response (stdout/stderr empty); exit 0, assuming success."
+            )
+            return True
+        logger.warning(
+                "HAProxy reload response unclear (no Success=1/0). stdout: %r stderr: %r", out, err
+            )
         return False
     except FileNotFoundError:
         logger.error("socat not found")
