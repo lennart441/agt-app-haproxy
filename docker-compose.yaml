@@ -138,6 +138,9 @@ services:
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
       - MAIL_FROM=${MAIL_FROM:-}
       - MAIL_TO=${MAIL_TO:-}
+      - MAIL_NOTIFY_VALIDATION_FAILURE=${MAIL_NOTIFY_VALIDATION_FAILURE:-true}
+      - MAIL_NOTIFY_RELOAD_FAILURE=${MAIL_NOTIFY_RELOAD_FAILURE:-true}
+      - MAIL_NOTIFY_FAIL_OPEN=${MAIL_NOTIFY_FAIL_OPEN:-true}
       - CLUSTER_HEALTH_INTERVAL_HOURS=${CLUSTER_HEALTH_INTERVAL_HOURS:-168}
       - CLUSTER_HEALTH_TIMEOUT_SEC=${CLUSTER_HEALTH_TIMEOUT_SEC:-5}
     volumes:
@@ -151,6 +154,12 @@ services:
       - haproxy-stat:/var/run/haproxy-stat
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5); exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     stop_grace_period: 15s
     restart: always
     networks:
@@ -184,6 +193,12 @@ services:
     # Port 8081 auf Host binden, damit Follower (agt-2/agt-3) den Master im WireGuard-Mesh erreichen können.
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=5); exit(0 if r.status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     stop_grace_period: 15s
     restart: always
     networks:

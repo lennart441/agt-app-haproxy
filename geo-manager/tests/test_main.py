@@ -119,27 +119,32 @@ def test_health_handler_200():
 
 
 def test_metrics_handler_200():
-    """GET /metrics returns Prometheus text."""
+    """GET /metrics returns Prometheus text (app metrics always, cluster optional)."""
     handler = MagicMock()
     handler.path = "/metrics"
     handler.server = MagicMock()
+    handler.server.config = Config.from_env()
     handler._send_metrics = lambda: GeoStatusHandler._send_metrics(handler)
     handler.wfile = MagicMock()
     with patch("geo_manager.main.get_cluster_health_state") as mock_get:
         mock_get.return_value = None
         GeoStatusHandler.do_GET(handler)
     handler.send_response.assert_called_once_with(200)
-    handler.wfile.write.assert_called_once_with(b"")
+    body = handler.wfile.write.call_args[0][0]
+    assert b"geo_node_prio" in body
+    assert b"geo_is_master" in body
+    assert b"geo_last_validated_timestamp_seconds" in body
 
 
 def test_metrics_handler_200_with_state():
-    """GET /metrics with cluster state returns Prometheus body."""
+    """GET /metrics with cluster state returns app + cluster Prometheus body."""
     from geo_manager.cluster_health import ClusterHealthState, NodeProbeResult
     state = ClusterHealthState()
     state.update([NodeProbeResult("1.2.3.4", "2026-01-01T12:00:00Z", True, 2.0)])
     handler = MagicMock()
     handler.path = "/metrics"
     handler.server = MagicMock()
+    handler.server.config = Config.from_env()
     handler._send_metrics = lambda: GeoStatusHandler._send_metrics(handler)
     handler.wfile = MagicMock()
     with patch("geo_manager.main.get_cluster_health_state") as mock_get:
@@ -147,6 +152,7 @@ def test_metrics_handler_200_with_state():
         GeoStatusHandler.do_GET(handler)
     handler.send_response.assert_called_once_with(200)
     body = handler.wfile.write.call_args[0][0]
+    assert b"geo_node_prio" in body
     assert b"geo_cluster_node_reachable" in body
 
 

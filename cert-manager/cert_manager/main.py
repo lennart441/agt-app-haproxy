@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import http.client
 import os
+import urllib.request
 
 
 class CertHandler(BaseHTTPRequestHandler):
@@ -124,8 +125,71 @@ class CertHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(pem)
 
+    def _fetch_node_geo_status(self, node_ip: str, geo_port: int, timeout: float = 4.0) -> dict | str:
+        """Fetch GET /geo/status from node_ip:geo_port. Returns parsed JSON or error string."""
+        url = f"http://{node_ip}:{geo_port}/geo/status"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 200:
+                    return f"HTTP {resp.status}"
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            return str(e)
+
+    def _fetch_node_cert_status(
+        self, node_ip: str, cert_port: int, cluster_key: str, timeout: float = 4.0
+    ) -> dict | str:
+        """Fetch GET /cert/status from node_ip:cert_port. Returns parsed JSON or error string."""
+        path = f"/cert/status?cluster_key={cluster_key}" if cluster_key else "/cert/status"
+        url = f"http://{node_ip}:{cert_port}{path}"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 200:
+                    return f"HTTP {resp.status}"
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            return str(e)
+
+    def _build_cluster_overview_html(self, config: Config) -> str:
+        """Aggregate geo + cert status from all MESH_NODES and return HTML table rows."""
+        geo_port = int(os.environ.get("GEO_STATUS_PORT", "8080"))
+        cert_port = config.status_port
+        cluster_key = getattr(config, "cluster_key", "") or ""
+        rows: list[str] = []
+        for node_ip in config.mesh_nodes:
+            node_ip = node_ip.strip()
+            if not node_ip:
+                continue
+            geo_data = self._fetch_node_geo_status(node_ip, geo_port)
+            cert_data = self._fetch_node_cert_status(node_ip, cert_port, cluster_key)
+            geo_ok = isinstance(geo_data, dict)
+            cert_ok = isinstance(cert_data, dict)
+            geo_name = geo_data.get("node_name", "—") if geo_ok else "—"
+            geo_prio = geo_data.get("node_prio", "—") if geo_ok else "—"
+            geo_validated = (geo_data.get("validated_at") or "—") if geo_ok else "—"
+            cert_version = (cert_data.get("version") or "—") if cert_ok else "—"
+            cert_since = (cert_data.get("validated_since") or "—") if cert_ok else "—"
+            cert_master = "Master" if (cert_ok and cert_data.get("cert_is_master")) else "Follower"
+            reach = "✓" if (geo_ok or cert_ok) else "✗"
+            err_geo = f" Geo: {geo_data}" if not geo_ok and isinstance(geo_data, str) else ""
+            err_cert = f" Cert: {cert_data}" if not cert_ok and isinstance(cert_data, str) else ""
+            rows.append(
+                f"<tr><td>{node_ip}</td><td>{geo_name}</td><td>{geo_prio}</td><td>{geo_validated}</td>"
+                f"<td>{cert_version}</td><td>{cert_since}</td><td>{cert_master}</td><td>{reach}</td>"
+                f"<td class=\"meta\">{err_geo}{err_cert}</td></tr>"
+            )
+        if not rows:
+            return "<p class=\"meta\">Keine MESH_NODES konfiguriert oder keine Knoten erreichbar.</p>"
+        header = (
+            "<tr><th>Knoten (IP)</th><th>Geo Name</th><th>Geo Prio</th><th>Geo validated_at</th>"
+            "<th>Cert Version</th><th>Cert seit</th><th>Cert Rolle</th><th>Erreichbar</th><th>Fehler</th></tr>"
+        )
+        return f'<table style="width:100%; border-collapse:collapse;"><thead>{header}</thead><tbody>' + "".join(rows) + "</tbody></table>"
+
     def _send_dashboard(self) -> None:
-        """GET /dashboard: simple read-only HTML overview with manual actions."""
+        """GET /dashboard: read-only HTML overview with cluster aggregation and manual actions."""
         config: Config = self.server.config  # type: ignore[attr-defined]
         state = get_state()
         cert_version = state.version if state else "—"
@@ -146,6 +210,8 @@ class CertHandler(BaseHTTPRequestHandler):
             conn.close()
         except Exception:
             geo_status_text = "nicht erreichbar"
+
+        cluster_table = self._build_cluster_overview_html(config) if config.mesh_nodes else "<p class=\"meta\">MESH_NODES nicht gesetzt.</p>"
 
         html = f"""
 <!doctype html>
@@ -183,6 +249,12 @@ class CertHandler(BaseHTTPRequestHandler):
       Rolle: {"<span class='badge badge-master'>Master</span>" if config.cert_is_master else "<span class='badge badge-follower'>Follower</span>"}.
       Dieses Dashboard ist read-only bis auf die expliziten "Deploy now"-Aktionen unten.
     </p>
+
+    <section class="card">
+      <h2>Cluster-Übersicht (alle Knoten)</h2>
+      <p class="meta">Aggregiert von diesem Knoten aus MESH_NODES (Geo :{geo_port}, Cert :{config.status_port}).</p>
+      {cluster_table}
+    </section>
 
     <div class="grid">
       <section class="card">

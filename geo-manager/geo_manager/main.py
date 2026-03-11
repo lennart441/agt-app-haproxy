@@ -19,6 +19,17 @@ from .cluster_health import (
     set_cluster_health_state,
 )
 from .config import Config
+from .metrics import (
+    inc_fail_open_events,
+    inc_fetch_fail_open,
+    inc_fetch_failure,
+    inc_fetch_success,
+    inc_reload_failure,
+    inc_reload_success,
+    inc_validation_failure,
+    set_last_validated as metrics_set_last_validated,
+    to_prometheus as metrics_to_prometheus,
+)
 from .fetcher import (
     build_whitelist_map,
     fetch_geo_csv_to_map,
@@ -26,7 +37,12 @@ from .fetcher import (
     merge_geo_map_contents,
     write_maps,
 )
-from .notify import send_failure_mail
+from .notify import (
+    notify_fail_open,
+    notify_reload_failure,
+    notify_validation_failure,
+    send_failure_mail,
+)
 from .reload import trigger_reload
 from .staging import get_master_validated_at, should_follower_activate
 from .validation import (
@@ -99,12 +115,15 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_metrics(self) -> None:
-        """GET /metrics: Prometheus text format (cluster health + optional geo)."""
+        """GET /metrics: Prometheus text format (app metrics + cluster health). Never empty."""
+        config = self.server.config  # type: ignore
+        app_lines = metrics_to_prometheus(config)
         state = get_cluster_health_state()
         if state is not None:
-            body = state.to_prometheus().encode("utf-8")
+            cluster_lines = state.to_prometheus()
+            body = (app_lines + cluster_lines).strip().encode("utf-8")
         else:
-            body = b""
+            body = app_lines.strip().encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -196,6 +215,7 @@ def run_master_loop(config: Config) -> None:
                     if attempt < config.fetch_retries - 1:
                         time.sleep(config.fetch_retry_delay_sec)
             if not success and last_error:
+                inc_fetch_failure()
                 _notify_fetch_failure(config, last_error)
         except Exception as e:
             logger.exception("Master loop error: %s", e)
@@ -255,23 +275,34 @@ def _master_fetch_validate_activate(config: Config) -> None:
     fail_open = False
     if not geo_content.strip():
         fail_open = True
+        inc_fail_open_events()
+        inc_fetch_fail_open()
         logger.error(
             "Fail-open: Geo-Liste fehlt (leer). Erlaube alle Zugriffe; bitte GEO_SOURCE_URL prüfen."
         )
+        notify_fail_open(config, "Geo-Liste fehlt (leer)")
         geo_content = build_permissive_geo_map(config.allowed_country_codes)
     elif count_geo_data_lines(geo_content) < config.fail_open_min_entries:
         fail_open = True
+        inc_fail_open_events()
+        inc_fetch_fail_open()
         n = count_geo_data_lines(geo_content)
         logger.error(
             "Fail-open: Geo-Liste hat nur %d Einträge (Minimum %d). Erlaube alle Zugriffe.",
             n,
             config.fail_open_min_entries,
         )
+        notify_fail_open(
+            config,
+            f"Geo-Liste hat nur {n} Einträge (Minimum {config.fail_open_min_entries})",
+        )
         geo_content = build_permissive_geo_map(config.allowed_country_codes)
 
     if not fail_open and not validate_size(
         geo_content, config.map_dir, config.size_deviation_threshold
     ):
+        inc_validation_failure("size")
+        notify_validation_failure(config, "size", "Size check failed")
         raise RuntimeError("Size check failed")
 
     # Plausibilitätscheck (Anchor-Check): nur wenn ANCHOR_IPS gesetzt; leer = Check überspringen, nicht abbrechen
@@ -279,6 +310,8 @@ def _master_fetch_validate_activate(config: Config) -> None:
         if not validate_anchors(
             geo_content, config.anchor_ips, config.allowed_country_codes
         ):
+            inc_validation_failure("anchor")
+            notify_validation_failure(config, "anchor", "Anchor check failed")
             raise RuntimeError("Anchor check failed")
     else:
         logger.info("ANCHOR_IPS empty: anchor plausibility check skipped")
@@ -302,6 +335,8 @@ def _master_fetch_validate_activate(config: Config) -> None:
     ):
         if os.path.isfile(backup_path):
             os.replace(backup_path, geo_map_path)
+        inc_validation_failure("syntax")
+        notify_validation_failure(config, "syntax", "Syntax check failed; backup restored")
         raise RuntimeError("Syntax check failed; backup restored")
 
     if os.path.isfile(backup_path):
@@ -309,8 +344,14 @@ def _master_fetch_validate_activate(config: Config) -> None:
 
     persist_size(config.map_dir, len(geo_content.encode("utf-8")))
     if not trigger_reload(config.haproxy_socket):
+        inc_reload_failure()
+        notify_reload_failure(config, "HAProxy reload failed")
         raise RuntimeError("HAProxy reload failed")
-    set_validated_at(datetime.now(timezone.utc))
+    inc_reload_success()
+    validated_at = datetime.now(timezone.utc)
+    set_validated_at(validated_at)
+    metrics_set_last_validated(validated_at)
+    inc_fetch_success()
     logger.info("Master: map activated and reloaded")
 
 
@@ -342,6 +383,7 @@ def _run_follower_iteration(config: Config) -> None:
             if attempt < config.fetch_retries - 1:
                 time.sleep(config.fetch_retry_delay_sec)
     if not success and last_error:
+        inc_fetch_failure()
         _notify_fetch_failure(config, last_error)
 
 

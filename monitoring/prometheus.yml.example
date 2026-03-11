@@ -1,0 +1,29 @@
+# Beispiel-Scrape-Konfiguration für Prometheus (Geo-Manager + HAProxy).
+# Anpassen: Ersetze 172.20.0.1, 172.20.0.2, 172.20.0.3 durch die tatsächlichen
+# Mesh-IPs oder Hostnamen der drei Knoten. Prometheus muss die Ports 8080 (Geo-Manager)
+# und 8404 (HAProxy) pro Knoten erreichen können.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  # Geo-Manager: App-Metriken (Rolle, Fetch/Reload/Fail-Open, Cluster-Health)
+  - job_name: geo-manager
+    static_configs:
+      - targets:
+          - 172.20.0.1:8080
+          - 172.20.0.2:8080
+          - 172.20.0.3:8080
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # HAProxy: Native Prometheus-Exposition (Connections, Backends, Status-Codes)
+  - job_name: haproxy
+    static_configs:
+      - targets:
+          - 172.20.0.1:8404
+          - 172.20.0.2:8404
+          - 172.20.0.3:8404
+    metrics_path: /metrics
+    scrape_interval: 30s

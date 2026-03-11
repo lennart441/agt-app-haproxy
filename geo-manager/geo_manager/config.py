@@ -44,6 +44,9 @@ class Config:
     mail_password: str
     mail_from: str
     mail_to: List[str]
+    mail_notify_validation_failure: bool
+    mail_notify_reload_failure: bool
+    mail_notify_fail_open: bool
     # Cluster health (weekly probe, latency, offline tracking)
     cluster_health_interval_hours: float
     cluster_health_timeout_sec: float
@@ -119,6 +122,9 @@ class Config:
         mail_enabled = os.environ.get("MAIL_ENABLED", "").strip().lower() in ("1", "true", "yes")
         mail_to_str = os.environ.get("MAIL_TO", "").strip()
         mail_to = [s.strip() for s in mail_to_str.split(",") if s.strip()]
+        mail_notify_validation_failure = os.environ.get("MAIL_NOTIFY_VALIDATION_FAILURE", "true").strip().lower() in ("1", "true", "yes")
+        mail_notify_reload_failure = os.environ.get("MAIL_NOTIFY_RELOAD_FAILURE", "true").strip().lower() in ("1", "true", "yes")
+        mail_notify_fail_open = os.environ.get("MAIL_NOTIFY_FAIL_OPEN", "true").strip().lower() in ("1", "true", "yes")
 
         try:
             cluster_interval = float(os.environ.get("CLUSTER_HEALTH_INTERVAL_HOURS", "168.0"))  # weekly
@@ -178,6 +184,9 @@ class Config:
             mail_password=os.environ.get("MAIL_PASSWORD", "").strip(),
             mail_from=os.environ.get("MAIL_FROM", "").strip(),
             mail_to=mail_to,
+            mail_notify_validation_failure=mail_notify_validation_failure,
+            mail_notify_reload_failure=mail_notify_reload_failure,
+            mail_notify_fail_open=mail_notify_fail_open,
             cluster_health_interval_hours=max(0.25, cluster_interval),
             cluster_health_timeout_sec=max(1.0, cluster_timeout),
             fail_open_min_entries=fail_open_min_entries,

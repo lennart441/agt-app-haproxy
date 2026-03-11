@@ -1,0 +1,60 @@
+# Beispiel-Alert-Regeln für Prometheus/Alertmanager (Geo-Manager & Cluster).
+# In Prometheus unter rule_files einbinden bzw. Inhalt in bestehende Rule-Dateien übernehmen.
+# Alertmanager-Routing und Empfänger (E-Mail, PagerDuty, etc.) separat konfigurieren.
+
+groups:
+  - name: geo-manager
+    interval: 30s
+    rules:
+      # Geo-Manager /health nicht erreichbar
+      - alert: GeoManagerDown
+        expr: up{job="geo-manager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Geo-Manager-Knoten nicht erreichbar"
+          description: "Prometheus kann {{ $labels.instance }} (job=geo-manager) seit 2 Min. nicht scrapen. Container/Dienst prüfen."
+
+      # Fail-Open ausgelöst (Sicherheitsrisiko)
+      - alert: GeoFailOpen
+        expr: increase(geo_fail_open_events_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Geo-Manager: Fail-Open ausgelöst"
+          description: "Knoten {{ $labels.instance }} hat mindestens ein Fail-Open-Ereignis (leere/zu kleine Geo-Liste). Alle Zugriffe erlaubt – sofort prüfen."
+
+      # Reload-Fehler (Maps wurden nicht aktiviert)
+      - alert: GeoReloadFailure
+        expr: increase(geo_reload_failure_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Geo-Manager: HAProxy-Reload fehlgeschlagen"
+          description: "Knoten {{ $labels.instance }} meldet Reload-Fehler in der letzten Stunde. HAProxy-Socket und Config prüfen."
+
+      # Fetch dauerhaft fehlgeschlagen (Counter steigt)
+      - alert: GeoFetchFailure
+        expr: increase(geo_fetch_total{outcome="failure"}[1h]) >= 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Geo-Manager: Wiederholte Fetch-Fehler"
+          description: "Knoten {{ $labels.instance }} meldet mindestens 3 Fetch-Fehler in der letzten Stunde. GEO_SOURCE_URL und Netzwerk prüfen."
+
+  - name: geo-cluster
+    interval: 30s
+    rules:
+      # Cluster-Knoten nicht erreichbar (aus Sicht eines anderen Knotens)
+      - alert: GeoClusterNodeUnreachable
+        expr: geo_cluster_node_reachable == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Geo-Cluster: Knoten nicht erreichbar"
+          description: "Knoten {{ $labels.node_ip }} wird von mindestens einem anderen Knoten seit 15 Min. als nicht erreichbar gemeldet. Mesh/Netzwerk prüfen."

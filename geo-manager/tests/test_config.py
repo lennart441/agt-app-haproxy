@@ -167,8 +167,21 @@ def test_config_mail_and_cluster_defaults(monkeypatch):
     assert config.mail_port == 25
     assert config.mail_use_tls is False
     assert config.mail_to == ["a@x.com", "b@x.com"]
+    assert config.mail_notify_validation_failure is True
+    assert config.mail_notify_reload_failure is True
+    assert config.mail_notify_fail_open is True
     assert config.cluster_health_interval_hours == 24.0
     assert config.cluster_health_timeout_sec == 10.0
+
+
+def test_config_mail_notify_flags_disabled(monkeypatch):
+    monkeypatch.setenv("MAIL_NOTIFY_VALIDATION_FAILURE", "false")
+    monkeypatch.setenv("MAIL_NOTIFY_RELOAD_FAILURE", "0")
+    monkeypatch.setenv("MAIL_NOTIFY_FAIL_OPEN", "no")
+    config = Config.from_env()
+    assert config.mail_notify_validation_failure is False
+    assert config.mail_notify_reload_failure is False
+    assert config.mail_notify_fail_open is False
 
 
 def test_config_geo_source_ipv6_url(monkeypatch):
