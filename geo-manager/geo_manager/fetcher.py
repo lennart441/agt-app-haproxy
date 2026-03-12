@@ -16,6 +16,14 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# RFC 1918 private + loopback: immer in Geo-Whitelist und vor WAF-Block schützen (Docker-NAT etc.)
+RFC1918_AND_LOOPBACK_CIDRS = [
+    "127.0.0.0/8",   # Loopback
+    "10.0.0.0/8",    # RFC 1918
+    "172.16.0.0/12", # RFC 1918
+    "192.168.0.0/16",# RFC 1918
+]
+
 
 def download_url(
     url: str,
@@ -137,10 +145,15 @@ def _sort_key_network(line: str) -> Tuple[int, ...]:
 
 
 def build_whitelist_map(anchor_ips: List[str]) -> str:
-    """Build whitelist map content: one line per IP 'ip\t1' for map_ip -m found.
-    Always includes 127.0.0.1 so localhost stays allowed even when ANCHOR_IPS is empty."""
+    """Build whitelist map content: one line per IP/CIDR 'ip_or_cidr\t1' for map_ip -m found.
+    Always includes RFC 1918 + loopback so private/Docker-NAT IPs are never geo-blocked;
+    plus 127.0.0.1 and ANCHOR_IPS."""
     seen: set[str] = set()
     lines: List[str] = []
+    for cidr in RFC1918_AND_LOOPBACK_CIDRS:
+        if cidr not in seen:
+            seen.add(cidr)
+            lines.append(f"{cidr}\t1")
     for ip in ["127.0.0.1", *anchor_ips]:
         ip = ip.strip()
         if ip and not ip.startswith("#") and ip not in seen:

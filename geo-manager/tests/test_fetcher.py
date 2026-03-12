@@ -300,12 +300,17 @@ def test_build_whitelist_map():
     assert "127.0.0.1\t1" in out
     assert "8.8.8.8\t1" in out
     assert "1.1.1.1\t1" in out
+    # RFC 1918 + loopback immer enthalten (Geo/WAF-Schutz für Docker-NAT)
+    for cidr in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
+        assert f"{cidr}\t1" in out
 
 
 def test_build_whitelist_map_empty():
-    """Empty ANCHOR_IPS still yields 127.0.0.1 so localhost stays allowed."""
+    """Empty ANCHOR_IPS still yields RFC 1918 + loopback + 127.0.0.1 so localhost/private IPs stay allowed."""
     out = build_whitelist_map([])
     assert "127.0.0.1\t1" in out
+    assert "10.0.0.0/8\t1" in out
+    assert "192.168.0.0/16\t1" in out
 
 
 def test_build_whitelist_map_skips_comments():
