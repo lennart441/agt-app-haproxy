@@ -163,8 +163,14 @@ class CertHandler(BaseHTTPRequestHandler):
             if not node_ip:
                 continue
             geo_data = self._fetch_node_geo_status(node_ip, geo_port)
-            cert_data = self._fetch_node_cert_status(node_ip, cert_port, cluster_key)
             geo_ok = isinstance(geo_data, dict)
+            # Wenn der Geo-Status diesen Knoten beschreibt (Name+Prio), Zert-Status lokal über 127.0.0.1 holen,
+            # um Hairpin-/Firewall-Probleme über die Mesh-IP zu vermeiden.
+            if geo_ok and geo_data.get("node_name") == config.node_name and geo_data.get("node_prio") == config.node_prio:
+                cert_data = self._fetch_node_cert_status("127.0.0.1", cert_port, cluster_key)
+            else:
+                cert_data = self._fetch_node_cert_status(node_ip, cert_port, cluster_key)
+            cert_ok = isinstance(cert_data, dict)
             cert_ok = isinstance(cert_data, dict)
             geo_name = geo_data.get("node_name", "—") if geo_ok else "—"
             geo_prio = geo_data.get("node_prio", "—") if geo_ok else "—"

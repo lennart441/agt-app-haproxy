@@ -1,0 +1,17 @@
+HTTP/1.0 403 Forbidden
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>403 Forbidden</title>
+</head>
+<body>
+  <h1>403 Forbidden</h1>
+  <p>This request has been blocked because our system recently detected an attack or malicious activity originating from your IP address.</p>
+  <p>Access from your connection is temporarily restricted for security reasons. If you believe this is an error, please contact the service provider.</p>
+</body>
+</html>

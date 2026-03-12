@@ -69,16 +69,81 @@ Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Relo
 - **Follower (Prio 2/3)**: Fragen den Master per HTTP (`/geo/status`) ab und übernehmen eine neue Map erst, wenn sie beim Master seit 48h (Prio 2) bzw. 96h (Prio 3) fehlerfrei aktiv ist. Ebenfalls Retries und Mail bei anhaltendem Fehlschlag.
 - **Cluster-Health**: Wöchentlich (oder per `CLUSTER_HEALTH_INTERVAL_HOURS`) werden alle Mesh-Knoten angefragt; Latenz und Offline-Phasen werden gespeichert und über `/cluster` bzw. `/metrics` (Prometheus) bereitgestellt.
 
-**HTTP-Endpunkte** (Port 8080, konfigurierbar mit `GEO_STATUS_PORT`):
-
-| Pfad | Beschreibung |
-|------|--------------|
-| `GET /health` | Einfacher Liveness-Check (200 OK, Body „OK“) – z. B. für Load-Balancer oder Monitoring. |
-| `GET /geo/status` | JSON: `node_prio`, `validated_at`, `map_version`. |
-| `GET /cluster` | JSON: letzter Cluster-Probe-Stand (Knoten, Latenz, Offline-Zusammenfassung). |
-| `GET /metrics` | Prometheus-Text-Format (Cluster-Erreichbarkeit, Latenz, Zeitstempel). |
-
 **Stabilität:** Kein Absturz bei Netzausfall oder Mail-/SMTP-Fehlern; Retries mit Wartezeit vor Benachrichtigung. Optional IPv6-Unterstützung über `GEO_BLOCKS_IPV6_URL` (Zwei-Dateien-Quelle).
+
+---
+
+## Ports und Endpunkte (Referenz)
+
+Übersicht aller Ports und HTTP-Pfade: wofür sie da sind, wer sie nutzt und wie man sie einsetzt.
+
+### Ports auf dem Host (Docker-Publish)
+
+| Port | Dienst | Zweck |
+|------|--------|--------|
+| **80** | HAProxy | HTTP – Redirect auf HTTPS (nur nach Geo/Whitelist-Check). Andernfalls 403 (Geo-Block). |
+| **443** | HAProxy | HTTPS – Einstieg für alle Anwendungen (API, Website, Client, Dashboard). Geo-Check, WAF, Rate-Limits. |
+| **50000** | HAProxy | Peers – Cluster-Sync der Stick-Tables (WAF Auto-Ban, Rate-Limits, Verbindungszähler). Nur im Mesh erreichbar halten. |
+| **8404** | HAProxy | Prometheus-Metrics – `GET /metrics` im Prometheus-Text-Format (HAProxy-Metriken). Für Monitoring. |
+| **8080** | Geo-Manager | Status/Health/Cluster/Metrics und manueller Deploy-Trigger. Für Follower-Abfrage und Ops. |
+| **8081** | Cert-Manager | Zertifikats-Status, Download, Dashboard und Deploy-Trigger. Für Follower und Ops-Dashboard. |
+
+### Geo-Manager (Port 8080, ENV: `GEO_STATUS_PORT`)
+
+| Methode + Pfad | Beschreibung | Wofür nötig |
+|----------------|--------------|-------------|
+| `GET /health` | Liveness (200 OK, Body „OK“). | Load-Balancer, Docker-Healthcheck, Kubernetes Liveness. |
+| `GET /geo/status` | JSON: `node_name`, `node_prio`, `validated_at`, `map_version`, ggf. weitere Felder. | Follower prüfen, ob Master eine gültige Map hat; Staged Rollout (48h/96h). |
+| `GET /cluster` | JSON: letzter Cluster-Probe-Stand (Knoten, Latenz, Offline-Infos). | Ops: Übersicht, ob alle Knoten im Mesh erreichbar sind. |
+| `GET /metrics` | Prometheus-Text-Format (Geo-Manager-Metriken + Cluster-Health). | Prometheus/Grafana: Fetch-Erfolge, Validierung, Reload, Cluster-Latenz. |
+| `POST /geo/deploy-now` | Triggert sofortigen Geo-Download/Validierung/Aktivierung (nur Master). Follower: 403. | Manueller Rollout ohne Warten auf `FETCH_INTERVAL_HOURS`. |
+
+**Beispiel:** Status vom lokalen Geo-Manager abfragen: `curl -s http://localhost:8080/geo/status`
+
+### Cert-Manager (Port 8081, ENV: `CERT_STATUS_PORT`)
+
+| Methode + Pfad | Beschreibung | Wofür nötig |
+|----------------|--------------|-------------|
+| `GET /health` | Liveness (200 OK, Body „OK“). | Docker-Healthcheck, Liveness-Probes. |
+| `GET /cert/status` | JSON: `node_name`, `node_prio`, `cert_is_master`, `version`, `validated_since`. Optional Query: `?cluster_key=…` (wenn `CERT_CLUSTER_KEY` gesetzt). | Follower ermitteln Master und ob neues Zertifikat übernommen werden soll. |
+| `GET /cert/download?version=…&cluster_key=…` | Liefert das aktuelle PEM (Fullchain+Privkey). Query-Parameter nötig bei gesetztem `CERT_CLUSTER_KEY`. | Follower laden vom Master das PEM für Staged Rollout. |
+| `GET /dashboard` | HTML-Dashboard: aggregierter Status aller Knoten (Geo + Cert), Links zu Deploy-Buttons. | Ops: einheitliche Übersicht aller Knoten; Deploy-Trigger im Browser. |
+| `POST /cert/deploy-now` | Triggert sofortigen Zertifikats-Rollout (Master schreibt PEM, Follower holen es nach Delay). | Nach Certbot-Renewal: Zertifikat ohne Warten im Cluster verteilen. |
+| `POST /geo/deploy-now` | Leitet an Geo-Manager weiter (POST an `geo-manager:8080/geo/deploy-now`). | Vom Dashboard aus: einen Klick für „Geo jetzt aktualisieren“. |
+
+**Hinweis:** `/cert/status` und `/cert/download` sind optional mit `cluster_key` geschützt (`CERT_CLUSTER_KEY`); ohne Key sind sie für alle erreichbar (z. B. nur im Mesh nutzen).
+
+### HAProxy – Öffentliche Pfade (Frontend 80/443)
+
+- **80:** Keine Pfad-Logik; nur Geo/Whitelist → Redirect 301 auf HTTPS, sonst 403 (Geo).
+- **443:** Host-basiertes Routing (Beispiele aus `conf/haproxy.cfg`):
+
+| Host (Beispiel) | Pfad | Backend | Zweck |
+|-----------------|------|---------|--------|
+| `agt-app.de` | `/dashboard*` | dashboard_backend_apache (Port 3102) | Ops-Dashboard (Apache o. Ä.). |
+| `agt-app.de` | sonstige | website_backend (3102) | Öffentliche Website. |
+| `client.agt-app.de` | / | client_backend_apache (3101) | Client-Anwendung. |
+| `agt-1/2/3.agt-app.de` | `/v3/sync-api*` | api_backend_sync (3111) | Sync-API. |
+| `agt-1/2/3.agt-app.de` | `/v3/report*` | api_backend_report (3112) | Report-API. |
+| `agt-1/2/3.agt-app.de` | `/v3/pri-api*` | api_backend_primaer (3113) | Primär-API. |
+| `agt-1/2/3.agt-app.de` | `/v3/agt-get-api*` | api_backend_get (3114) | AGT-Get-API. |
+
+Health-Checks (intern): z. B. `GET /v3/sync-api/ready`, `GET /v3/report/ready`, `GET /v3/pri-api/ready`, `GET /v3/agt-get-api/ready`.
+
+### HAProxy – Nur intern / Monitoring
+
+| Zugang | Port/Bind | Pfad | Zweck |
+|--------|-----------|------|--------|
+| Stats-UI | 127.0.0.1:56708 (im Container) | `/kM3liYHB` | HAProxy-Statistik, Admin (Auth: `STATS_USER`/`STATS_PASSWORD`). Nicht nach außen binden. |
+| Prometheus | 8404 (Host) | `GET /metrics` | HAProxy-Metriken für Prometheus. |
+
+**Hinweis:** Die Stats-UI ist nur über `127.0.0.1` im HAProxy-Container erreichbar; für Zugriff vom Host ggf. `docker exec` oder separates Port-Mapping mit Vorsicht (nur lokal).
+
+### Interne Ports (nur im Docker-Netz / Mesh)
+
+- **Coraza SPOA:** 9000 (HAProxy verbindet als Backend `coraza-spoa:9000`) – WAF-Anfragen.
+- **Backend-Server (Beispiele):** 3101 (Client), 3102 (Website/Dashboard), 3111–3114 (APIs) – das sind die Mesh-IPs der anderen Knoten bzw. Backend-Services laut `conf/haproxy.cfg`.
+- **Peers 50000:** Kommunikation zwischen HAProxy-Knoten für Stick-Tables; nur zwischen den drei Knoten (z. B. WireGuard-Mesh) erreichbar halten.
 
 ## Tests
 
