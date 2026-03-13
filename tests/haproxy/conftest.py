@@ -55,6 +55,8 @@ RATE_LIMIT_DEFAULTS = {
     "api_primaer": "120",
     "api_primaer_reqcode": "30",
     "api_primaer_verify": "20",
+    "api_primaer_reqcode_mail": "1",
+    "api_primaer_verify_mail": "5",
     "website": "2000",
     "client": "2000",
 }
@@ -73,6 +75,8 @@ ALL_STICK_TABLES = [
     "st_rl_api_primaer",
     "st_rl_api_primaer_reqcode",
     "st_rl_api_primaer_verify",
+    "st_rl_api_primaer_reqcode_mail",
+    "st_rl_api_primaer_verify_mail",
     "st_rl_website",
     "st_rl_client",
     "st_overload",
