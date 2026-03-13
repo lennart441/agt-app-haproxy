@@ -1,5 +1,6 @@
 """Tests for geo_manager.validation."""
 import os
+import shutil
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from geo_manager.validation import (
     PEER_LINE_1_TEMPLATE,
     PEER_LINE_2_TEMPLATE,
     PEER_LINE_3_TEMPLATE,
+    _apply_template_replacements,
     _build_peer_lines,
     _get_processed_config_path,
     build_permissive_geo_map,
@@ -57,6 +59,29 @@ def test_build_peer_lines_fewer_mesh_nodes_uses_defaults():
     assert l3 == "   server agt-3 172.20.0.3:50000"
 
 
+def test_apply_template_replacements_mesh_ips():
+    """__MESH_IP_*__ placeholders in backends are replaced with MESH_NODES IPs."""
+    config = Config.from_env()
+    config.node_name = "agt-1"
+    config.mesh_nodes = ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    content = "   server agt-1 __MESH_IP_1__:3102 check\n   server agt-2 __MESH_IP_2__:3102 check\n"
+    result = _apply_template_replacements(content, config)
+    assert "10.0.0.1:3102" in result
+    assert "10.0.0.2:3102" in result
+
+
+def test_apply_template_replacements_mesh_ips_defaults():
+    """With fewer than 3 mesh nodes, remaining __MESH_IP_*__ use default IPs."""
+    config = Config.from_env()
+    config.node_name = "agt-1"
+    config.mesh_nodes = ["10.0.0.1"]
+    content = "__MESH_IP_1__ __MESH_IP_2__ __MESH_IP_3__"
+    result = _apply_template_replacements(content, config)
+    assert "10.0.0.1" in result
+    assert "172.20.0.2" in result
+    assert "172.20.0.3" in result
+
+
 def test_get_processed_config_path_replaces_placeholders(tmp_path):
     cfg = tmp_path / "haproxy.cfg"
     cfg.write_text(
@@ -65,6 +90,7 @@ def test_get_processed_config_path_replaces_placeholders(tmp_path):
         + PEER_LINE_1_TEMPLATE + "\n"
         + PEER_LINE_2_TEMPLATE + "\n"
         + PEER_LINE_3_TEMPLATE + "\n"
+        "   server agt-1 __MESH_IP_1__:3102 check\n"
     )
     config = Config.from_env()
     config.node_name = "agt-2"
@@ -78,6 +104,7 @@ def test_get_processed_config_path_replaces_placeholders(tmp_path):
         assert "   server agt-1 10.0.0.1:50000" in content
         assert "   server agt-2\n" in content or "   server agt-2" in content
         assert "   server agt-3 10.0.0.3:50000" in content
+        assert "10.0.0.1:3102 check" in content
     finally:
         os.unlink(path)
 
@@ -95,6 +122,52 @@ def test_get_processed_config_path_replaces_crt_path_when_env_set(tmp_path, monk
         assert DEFAULT_HAPROXY_CRT_PATH not in content
     finally:
         os.unlink(path)
+
+
+def test_get_processed_config_path_directory(tmp_path):
+    """When cfg_path is a directory, all .cfg files are processed and a temp directory is returned."""
+    cfg_dir = tmp_path / "conf.d"
+    cfg_dir.mkdir()
+    (cfg_dir / "00-global.cfg").write_text("localpeer __NODE_NAME__\n")
+    (cfg_dir / "10-peers.cfg").write_text(
+        PEER_LINE_1_TEMPLATE + "\n"
+        + PEER_LINE_2_TEMPLATE + "\n"
+        + PEER_LINE_3_TEMPLATE + "\n"
+    )
+    (cfg_dir / "60-backends.cfg").write_text("   server agt-1 __MESH_IP_1__:3102 check\n")
+    config = Config.from_env()
+    config.node_name = "agt-2"
+    config.mesh_nodes = ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    result_path = _get_processed_config_path(str(cfg_dir), config)
+    try:
+        assert os.path.isdir(result_path)
+        global_content = open(os.path.join(result_path, "00-global.cfg")).read()
+        assert "localpeer agt-2" in global_content
+        peers_content = open(os.path.join(result_path, "10-peers.cfg")).read()
+        assert "   server agt-1 10.0.0.1:50000" in peers_content
+        assert "   server agt-2\n" in peers_content
+        backends_content = open(os.path.join(result_path, "60-backends.cfg")).read()
+        assert "10.0.0.1:3102" in backends_content
+    finally:
+        shutil.rmtree(result_path)
+
+
+def test_get_processed_config_path_directory_skips_non_cfg(tmp_path):
+    """Non-.cfg files in conf.d directory are not processed."""
+    cfg_dir = tmp_path / "conf.d"
+    cfg_dir.mkdir()
+    (cfg_dir / "00-global.cfg").write_text("global\n")
+    (cfg_dir / "notes.txt").write_text("should be ignored\n")
+    (cfg_dir / "backup.cfg.bak").write_text("should be ignored too\n")
+    config = Config.from_env()
+    result_path = _get_processed_config_path(str(cfg_dir), config)
+    try:
+        assert os.path.isdir(result_path)
+        assert os.path.isfile(os.path.join(result_path, "00-global.cfg"))
+        assert not os.path.exists(os.path.join(result_path, "notes.txt"))
+        assert not os.path.exists(os.path.join(result_path, "backup.cfg.bak"))
+    finally:
+        shutil.rmtree(result_path)
 
 
 def test_validate_syntax_with_config_missing_file():
@@ -124,6 +197,29 @@ def test_validate_syntax_with_config_unlink_oserror_still_returns_result(tmp_pat
             assert validate_syntax_with_config(str(cfg), str(tmp_path), config) is True
 
 
+def test_validate_syntax_with_config_directory(tmp_path):
+    """validate_syntax_with_config works with a conf.d directory."""
+    cfg_dir = tmp_path / "conf.d"
+    cfg_dir.mkdir()
+    (cfg_dir / "00-global.cfg").write_text("global\n  daemon\n")
+    config = Config.from_env()
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=0, stderr="")
+        assert validate_syntax_with_config(str(cfg_dir), str(tmp_path), config) is True
+
+
+def test_validate_syntax_with_config_directory_rmtree_oserror(tmp_path):
+    """When temp directory rmtree raises OSError, result is still returned."""
+    cfg_dir = tmp_path / "conf.d"
+    cfg_dir.mkdir()
+    (cfg_dir / "00-global.cfg").write_text("global\n  daemon\n")
+    config = Config.from_env()
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=0, stderr="")
+        with patch("geo_manager.validation.shutil.rmtree", side_effect=OSError):
+            assert validate_syntax_with_config(str(cfg_dir), str(tmp_path), config) is True
+
+
 def test_validate_syntax_config_missing():
     assert validate_syntax("/nonexistent/haproxy.cfg", "/tmp") is False
 
@@ -134,6 +230,16 @@ def test_validate_syntax_success(tmp_path):
     with patch("geo_manager.validation.subprocess.run") as m:
         m.return_value = MagicMock(returncode=0, stderr="")
         assert validate_syntax(str(cfg), str(tmp_path)) is True
+
+
+def test_validate_syntax_directory(tmp_path):
+    """validate_syntax accepts a directory path (haproxy -c -f <dir>)."""
+    cfg_dir = tmp_path / "conf.d"
+    cfg_dir.mkdir()
+    (cfg_dir / "00-global.cfg").write_text("global\n  daemon\n")
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=0, stderr="")
+        assert validate_syntax(str(cfg_dir), str(tmp_path)) is True
 
 
 def test_validate_syntax_failure(tmp_path):

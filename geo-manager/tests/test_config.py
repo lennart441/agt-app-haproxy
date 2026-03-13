@@ -42,7 +42,7 @@ def test_config_from_env_defaults():
     assert config.geo_source_ipv6_url is None
     assert config.geo_blocks_ipv6_url is None
     assert config.map_dir == "/usr/local/etc/haproxy/maps"
-    assert "haproxy.cfg" in config.haproxy_cfg_path
+    assert "conf.d" in config.haproxy_cfg_path
     assert config.haproxy_socket == "/var/run/haproxy.sock"
     assert config.stage_delay_prio2_hours == 48
     assert config.stage_delay_prio3_hours == 96

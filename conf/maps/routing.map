@@ -1,0 +1,28 @@
+# Base-Prefix (Host + Pfad) → Backend-Name.
+# Verwendet mit map_beg: längster Prefix gewinnt automatisch.
+# Neue Routen hier ergänzen; HAProxy-Reload erforderlich.
+#
+# Format: <host>/<pfad>	<backend_name>
+
+# API-Endpunkte (host_api + path → backend)
+agt-1.agt-app.de/v3/sync-api	api_backend_sync
+agt-2.agt-app.de/v3/sync-api	api_backend_sync
+agt-3.agt-app.de/v3/sync-api	api_backend_sync
+agt-1.agt-app.de/v3/report	api_backend_report
+agt-2.agt-app.de/v3/report	api_backend_report
+agt-3.agt-app.de/v3/report	api_backend_report
+agt-1.agt-app.de/v3/pri-api	api_backend_primaer
+agt-2.agt-app.de/v3/pri-api	api_backend_primaer
+agt-3.agt-app.de/v3/pri-api	api_backend_primaer
+agt-1.agt-app.de/v3/agt-get-api	api_backend_get
+agt-2.agt-app.de/v3/agt-get-api	api_backend_get
+agt-3.agt-app.de/v3/agt-get-api	api_backend_get
+
+# Dashboard (spezifischer als Website-Root; map_beg wählt den längsten Match)
+agt-app.de/dashboard	dashboard_backend_apache
+
+# Website (Catch-All für agt-app.de)
+agt-app.de/	website_backend
+
+# Client
+client.agt-app.de/	client_backend_apache

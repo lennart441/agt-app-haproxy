@@ -1,0 +1,8 @@
+# Hostname → Host-Typ (api, website, client).
+# Wird von der HTTPS-Frontend ACL genutzt: hdr(host),lower,map(hosts.map).
+# Neue Hosts hier ergänzen (Kleinbuchstaben, ohne Port).
+agt-1.agt-app.de	api
+agt-2.agt-app.de	api
+agt-3.agt-app.de	api
+agt-app.de	website
+client.agt-app.de	client

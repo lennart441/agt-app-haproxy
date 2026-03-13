@@ -5,6 +5,7 @@ All must pass before activating a new map.
 import ipaddress
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from typing import TYPE_CHECKING, List, Optional
@@ -16,10 +17,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Template strings in haproxy.cfg that are replaced by the HAProxy entrypoint; we need the same for -c in geo-manager.
-PEER_LINE_1_TEMPLATE = "   server agt-1 172.20.0.1:50000"
-PEER_LINE_2_TEMPLATE = "   server agt-2 172.20.0.2:50000"
-PEER_LINE_3_TEMPLATE = "   server agt-3 172.20.0.3:50000"
+# Template strings in conf.d that are replaced by the HAProxy entrypoint;
+# we need the same for haproxy -c in geo-manager.
+PEER_LINE_1_TEMPLATE = "   server agt-1 __MESH_IP_1__:50000"
+PEER_LINE_2_TEMPLATE = "   server agt-2 __MESH_IP_2__:50000"
+PEER_LINE_3_TEMPLATE = "   server agt-3 __MESH_IP_3__:50000"
 
 # In geo-manager container /etc/ssl/certs is the CA bundle (no haproxy.pem). For haproxy -c we substitute the cert path.
 DEFAULT_HAPROXY_CRT_PATH = "/etc/ssl/certs/haproxy.pem"
@@ -43,22 +45,46 @@ def _build_peer_lines(config: "Config") -> tuple[str, str, str]:
     return lines[0], lines[1], lines[2]
 
 
-def _get_processed_config_path(cfg_path: str, config: "Config") -> str:
-    """
-    Read template haproxy.cfg, replace __NODE_NAME__, __CLUSTER_MAXCONN__, peer lines
-    (same as HAProxy entrypoint), write to temp file. Caller must unlink the returned path.
-    """
-    with open(cfg_path) as f:
-        content = f.read()
+def _apply_template_replacements(content: str, config: "Config") -> str:
+    """Apply all template placeholder replacements (shared between file and directory processing)."""
     line1, line2, line3 = _build_peer_lines(config)
     content = content.replace("__NODE_NAME__", config.node_name)
     content = content.replace("__CLUSTER_MAXCONN__", str(config.cluster_maxconn))
+    # Peer lines first (before general __MESH_IP_*__ replacement)
     content = content.replace(PEER_LINE_1_TEMPLATE, line1)
     content = content.replace(PEER_LINE_2_TEMPLATE, line2)
     content = content.replace(PEER_LINE_3_TEMPLATE, line3)
-    # So that haproxy -c finds the cert in geo-manager (ssl mounted at different path, not /etc/ssl/certs).
+    # Backend server IPs from MESH_NODES
+    default_ips = ("172.20.0.1", "172.20.0.2", "172.20.0.3")
+    for idx in range(3):
+        ip = config.mesh_nodes[idx] if idx < len(config.mesh_nodes) else default_ips[idx]
+        content = content.replace(f"__MESH_IP_{idx + 1}__", ip)
+    # Cert path for validation
     crt_path = os.environ.get(ENV_HAPROXY_CRT_PATH_FOR_VALIDATION, DEFAULT_HAPROXY_CRT_PATH)
     content = content.replace(DEFAULT_HAPROXY_CRT_PATH, crt_path)
+    return content
+
+
+def _get_processed_config_path(cfg_path: str, config: "Config") -> str:
+    """
+    Read template haproxy config, replace placeholders (same as HAProxy entrypoint).
+    Supports both a single file and a conf.d directory.
+    Caller must clean up the returned path (file or directory).
+    """
+    if os.path.isdir(cfg_path):
+        tmp_dir = tempfile.mkdtemp(prefix="haproxy-confd-")
+        for filename in sorted(os.listdir(cfg_path)):
+            if not filename.endswith(".cfg"):
+                continue
+            with open(os.path.join(cfg_path, filename)) as f:
+                content = f.read()
+            content = _apply_template_replacements(content, config)
+            with open(os.path.join(tmp_dir, filename), "w") as f:
+                f.write(content)
+        return tmp_dir
+    with open(cfg_path) as f:
+        content = f.read()
+    content = _apply_template_replacements(content, config)
     fd, path = tempfile.mkstemp(suffix=".cfg", prefix="haproxy-")
     try:
         os.write(fd, content.encode("utf-8"))
@@ -73,11 +99,11 @@ def validate_syntax(
     haproxy_bin: str = "haproxy",
 ) -> bool:
     """
-    Run haproxy -c -f haproxy_cfg_path. Config must reference maps in map_dir.
+    Run haproxy -c -f haproxy_cfg_path. Config can be a single file or a conf.d directory.
     Returns True if config is valid.
     """
-    if not os.path.isfile(haproxy_cfg_path):
-        logger.error("Config file not found: %s", haproxy_cfg_path)
+    if not os.path.exists(haproxy_cfg_path):
+        logger.error("Config path not found: %s", haproxy_cfg_path)
         return False
     try:
         result = subprocess.run(
@@ -106,19 +132,22 @@ def validate_syntax_with_config(
     haproxy_bin: str = "haproxy",
 ) -> bool:
     """
-    Like validate_syntax but replaces __NODE_NAME__, __CLUSTER_MAXCONN__, peer lines
-    (same as HAProxy entrypoint) so haproxy -c sees a valid config. Use this when
-    the config file is the repo template with placeholders.
+    Like validate_syntax but replaces __NODE_NAME__, __CLUSTER_MAXCONN__, peer lines,
+    __MESH_IP_*__ (same as HAProxy entrypoint) so haproxy -c sees a valid config.
+    Supports both a single file and a conf.d directory.
     """
-    if not os.path.isfile(haproxy_cfg_path):
-        logger.error("Config file not found: %s", haproxy_cfg_path)
+    if not os.path.exists(haproxy_cfg_path):
+        logger.error("Config path not found: %s", haproxy_cfg_path)
         return False
     processed_path = _get_processed_config_path(haproxy_cfg_path, config)
     try:
         return validate_syntax(processed_path, map_dir, haproxy_bin)
     finally:
         try:
-            os.unlink(processed_path)
+            if os.path.isdir(processed_path):
+                shutil.rmtree(processed_path)
+            else:
+                os.unlink(processed_path)
         except OSError:
             pass
 

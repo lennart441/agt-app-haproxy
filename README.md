@@ -116,7 +116,7 @@ Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Relo
 ### HAProxy – Öffentliche Pfade (Frontend 80/443)
 
 - **80:** Keine Pfad-Logik; nur Geo/Whitelist → Redirect 301 auf HTTPS, sonst 403 (Geo).
-- **443:** Host-basiertes Routing (Beispiele aus `conf/haproxy.cfg`):
+- **443:** Host-basiertes Routing (Beispiele aus `conf/conf.d/` bzw. `conf/maps/routing.map`):
 
 | Host (Beispiel) | Pfad | Backend | Zweck |
 |-----------------|------|---------|--------|
@@ -142,7 +142,7 @@ Health-Checks (intern): z. B. `GET /v3/sync-api/ready`, `GET /v3/report/ready`
 ### Interne Ports (nur im Docker-Netz / Mesh)
 
 - **Coraza SPOA:** 9000 (HAProxy verbindet als Backend `coraza-spoa:9000`) – WAF-Anfragen.
-- **Backend-Server (Beispiele):** 3101 (Client), 3102 (Website/Dashboard), 3111–3114 (APIs) – das sind die Mesh-IPs der anderen Knoten bzw. Backend-Services laut `conf/haproxy.cfg`.
+- **Backend-Server (Beispiele):** 3101 (Client), 3102 (Website/Dashboard), 3111–3114 (APIs) – das sind die Mesh-IPs der anderen Knoten bzw. Backend-Services laut `conf/conf.d/60-backends.cfg`.
 - **Peers 50000:** Kommunikation zwischen HAProxy-Knoten für Stick-Tables; nur zwischen den drei Knoten (z. B. WireGuard-Mesh) erreichbar halten.
 
 ## Tests

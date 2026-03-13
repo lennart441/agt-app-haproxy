@@ -45,7 +45,7 @@ Kurze Handlungsanleitungen bei typischen Störungen des Geo-Managers und des HAP
 
 1. Socket prüfen: Auf dem Knoten `ls -la /var/run/haproxy-stat/` (bzw. konfigurierter Socket); Rechte für den Geo-Manager-Container (gleiches Volume).
 2. Manueller Reload-Test: `echo "reload" | socat STDIO UNIX-CONNECT:/var/run/haproxy-stat/master` (von dem Host/Container, von dem aus der Geo-Manager den Socket nutzt). Bei „Success=0“: HAProxy-Logs und Config prüfen.
-3. HAProxy-Config validieren: `haproxy -c -f /tmp/haproxy.cfg` (mit den gleichen Maps, die der Geo-Manager geschrieben hat). Bei Fehlern: Map-Dateien und `conf/haproxy.cfg` prüfen.
+3. HAProxy-Config validieren: `haproxy -c -f /tmp/haproxy.cfg` (mit den gleichen Maps, die der Geo-Manager geschrieben hat). Bei Fehlern: Map-Dateien und `conf/conf.d/` prüfen.
 4. Nach Behebung: „Deploy Geo-Listen jetzt“ erneut auslösen oder warten auf nächsten Fetch-Zyklus.
 
 ---

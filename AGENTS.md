@@ -28,8 +28,9 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 
 | Pfad | Inhalt |
 |------|--------|
-| `conf/` | HAProxy- und WAF-Konfiguration: `haproxy.cfg`, `coraza.cfg`, `coraza-spoa.yaml`, `errors/`, `maps/` (Start-Maps), `promtail-config.yaml`. |
-| `conf/maps/` | Initiale `geo.map` und `whitelist.map`; Geo-Manager überschreibt sie. |
+| `conf/` | HAProxy- und WAF-Konfiguration: `conf.d/` (modulare Config), `coraza.cfg`, `coraza-spoa.yaml`, `errors/`, `maps/`. |
+| `conf/conf.d/` | Modulare HAProxy-Config (00-global, 10-peers, …, 60-backends); Entrypoint ersetzt Platzhalter und schreibt nach `/tmp/conf.d/`. |
+| `conf/maps/` | `geo.map`, `whitelist.map` (Geo-Manager), `hosts.map`, `routing.map`, `rate-limits.map` (Routing/Rate-Limits). |
 | `ssl/` | `haproxy.pem` (Fullchain+Privkey), pro Server befüllen, nicht committen. |
 | `coraza/` | `Dockerfile.coraza` (Coraza SPOA Build), `rules/coreruleset/` (OWASP CRS als Git-Submodule). |
 | `geo-manager/` | Python-Paket `geo_manager`: Config, Fetcher, Validierung, Staging, Reload, HTTP-Status; plus Tests. |
@@ -66,7 +67,7 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
 ## 6. Konventionen für Weiterentwicklung
 
 - **Eine `docker-compose.yaml`** für alle Knoten; keine Compose-Varianten pro Host. Unterschiede nur über `.env`.
-- **HAProxy-Config**: Stateless, eine gemeinsame `conf/haproxy.cfg`; Geo/Whitelist-ACLs und Map-Pfade wie in Spezifikation; Stats-Socket unter `/var/run/haproxy-stat/socket` (geteilt mit Geo-Manager).
+- **HAProxy-Config**: Stateless, modulare Dateien in `conf/conf.d/` (nummeriert für Ladereihenfolge); Routing über `maps/routing.map`, Rate-Limits über `maps/rate-limits.map`; Stats-Socket unter `/var/run/haproxy-stat/socket` (geteilt mit Geo-Manager).
 - **Python (geo-manager)**:
   - Paketname: `geo_manager` (Unterverzeichnis `geo-manager/geo_manager/`).
   - Einstieg: `python -m geo_manager` (siehe `__main__.py`).
@@ -83,7 +84,8 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
 | Neue ENV-Variable | `geo-manager/geo_manager/config.py`, `.env.example`, ggf. `docker-compose.yaml` (environment). |
 | Andere Geo-Quelle (z. B. MMDB) | `geo-manager/geo_manager/fetcher.py`; Tests in `geo-manager/tests/test_fetcher.py`. |
 | Staged-Delays ändern | `config.py` (Defaults), `.env.example`; Verhalten in `staging.py`. |
-| HAProxy-Frontend/Backend anpassen | `conf/haproxy.cfg`; Geo/Whitelist-Reihenfolge beibehalten (vor WAF). |
+| HAProxy-Frontend/Backend anpassen | `conf/conf.d/50-frontend-https.cfg` (Frontend), `conf/conf.d/60-backends.cfg` (Backends); Routing in `conf/maps/routing.map`. |
+| Neue Route / neues Rate-Limit | `conf/maps/routing.map`, `conf/maps/rate-limits.map`, ggf. `conf/conf.d/30-stick-tables.cfg`. |
 | Coraza/WAF-Regeln | `conf/coraza-spoa.yaml`, `coraza/rules/coreruleset/` (Submodule), Anpassungen in `coraza/rules/custom/`. |
 | CI anpassen | `.github/workflows/ci.yml` (Tests, Docker-Builds). |
 

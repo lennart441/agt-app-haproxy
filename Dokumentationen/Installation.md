@@ -60,9 +60,9 @@ chmod 600 .env
 ```
 
 - **Pro Server anzupassen (Pflicht):**
-  - **NODE_NAME:** Eindeutiger Knotenname, z. B. `agt-1`, `agt-2`, `agt-3`. Wird beim Start des HAProxy-Containers automatisch in die Config eingetragen (Platzhalter `__NODE_NAME__` → `localpeer`); die Datei `conf/haproxy.cfg` muss nicht manuell geändert werden.
+  - **NODE_NAME:** Eindeutiger Knotenname, z. B. `agt-1`, `agt-2`, `agt-3`. Wird beim Start des HAProxy-Containers automatisch in die Config eingetragen (Platzhalter `__NODE_NAME__` → `localpeer`); die Dateien in `conf/conf.d/` müssen nicht manuell geändert werden.
   - **MESH_NODES:** Kommaseparierte Mesh-IPs **aller drei** Knoten, Reihenfolge = agt-1, agt-2, agt-3 (z. B. `172.20.0.1,172.20.0.2,172.20.0.3`). Wird für Geo-Manager (Cluster-Health) und im HAProxy-Entrypoint für die Peers-Zeilen genutzt (lokaler Knoten ohne IP, andere mit IP:50000).
-  - **CLUSTER_MAXCONN:** Eine Zahl für das **gesamte** Cluster (nicht pro Backend). Über eine Stick-Table mit Key „global“ und Peers-Synchronisation wird die Summe der gleichzeitigen Verbindungen begrenzt; ab diesem Wert 503. Pro-Backend-Rate-Limits (RPS) stehen fest in `conf/haproxy.cfg`.
+  - **CLUSTER_MAXCONN:** Eine Zahl für das **gesamte** Cluster (nicht pro Backend). Über eine Stick-Table mit Key „global“ und Peers-Synchronisation wird die Summe der gleichzeitigen Verbindungen begrenzt; ab diesem Wert 503. Pro-Backend-Rate-Limits (RPS) stehen in `conf/maps/rate-limits.map`.
   - **NODE_PRIO:** `1` = Master (lädt Geo-Daten, schreibt Maps), `2` oder `3` = Follower (übernehmen Maps mit Verzögerung). Pro physischem Server genau einen Master (Prio 1) und zwei Follower (Prio 2 und 3).
   - **ANCHOR_IPS:** Kommaseparierte IPs, die in der Geo-Liste als DE/EU (oder erlaubte Länder) gelten **müssen**. Der Geo-Manager prüft vor Aktivierung einer neuen Map, dass diese IPs erlaubt sind (Plausibilitäts-Check). Fehlt eine Anchor-IP oder ist sie „blockiert“, wird die neue Map nicht aktiviert.
   - **GEO_SOURCE_URL:** URL der Geo-IP-CSV. Zwei Formate werden automatisch erkannt: (1) `network`, `country_iso_code` (z. B. datasets/geoip2-ipv4), (2) `ip_range_start`, `ip_range_end`, `country_code` (z. B. [sapics/ip-location-db](https://github.com/sapics/ip-location-db) – IPv4- und IPv6-CSVs getrennt). Optional **GEO_SOURCE_IPV6_URL** für eine zweite CSV gleichen Formats (IPv6); wird mit IPv4 zu einer Map zusammengeführt. Alternativ MaxMind-Style: `GEO_BLOCKS_URL` + `GEO_LOCATIONS_URL` (+ optional `GEO_BLOCKS_IPV6_URL`). Ohne gültige URL kann der Master keine Maps erzeugen.
@@ -134,7 +134,7 @@ sudo chown 99:99 run/haproxy-stat
 - **HAProxy-Konfiguration prüfen:** Damit beim Start kein sofortiger Fehler entsteht, die Konfiguration einmal testen (entweder mit lokal installiertem `haproxy` oder in einem einmalig gestarteten Container):
 
 ```bash
-docker run --rm -v "$(pwd)/conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" haproxy:3.2-alpine haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+docker run --rm -v "$(pwd)/conf/conf.d:/usr/local/etc/haproxy/conf.d:ro" haproxy:3.2-alpine haproxy -c -f /usr/local/etc/haproxy/conf.d/
 ```
 
   Erwartung: Ausgabe „Configuration file is valid“.
@@ -215,8 +215,8 @@ docker compose ps
 
 ### 7.4 HAProxy-Statistik
 
-- Die HAProxy-Statistik-Seite läuft im Container auf Port 56708 und ist auf `127.0.0.1` gebunden (`conf/haproxy.cfg`, `frontend stats`). Es gibt **kein** Port-Mapping in `docker-compose.yaml`; Zugriff erfolgt nur über den Host (z. B. SSH-Tunnel oder `docker exec`).
-- Die URI ist in `conf/haproxy.cfg` hinterlegt, die Zugangsdaten werden **nur** über ENV gesetzt (`STATS_USER`, `STATS_PASSWORD` in `.env`).
+- Die HAProxy-Statistik-Seite läuft im Container auf Port 56708 und ist auf `127.0.0.1` gebunden (`conf/conf.d/45-frontend-stats.cfg`, `frontend stats`). Es gibt **kein** Port-Mapping in `docker-compose.yaml`; Zugriff erfolgt nur über den Host (z. B. SSH-Tunnel oder `docker exec`).
+- Die URI ist in `conf/conf.d/45-frontend-stats.cfg` hinterlegt, die Zugangsdaten werden **nur** über ENV gesetzt (`STATS_USER`, `STATS_PASSWORD` in `.env`).
 - Beispiel:
 
   ```env
@@ -268,7 +268,7 @@ docker compose ps
 - [ ] `ssl/haproxy.pem` (Fullchain + Privkey) vorhanden, Rechte 600  
 - [ ] Submodule `coraza/rules/coreruleset` initialisiert (`git submodule update --init --recursive`)  
 - [ ] `run/haproxy-stat` angelegt, `chown 99:99`  
-- [ ] `haproxy -c -f conf/haproxy.cfg` erfolgreich (per Docker-Befehl)  
+- [ ] `haproxy -c -f conf/conf.d/` erfolgreich (per Docker-Befehl)  
 - [ ] `docker compose up -d --build` ausgeführt, alle drei Container „Up“  
 - [ ] `curl http://localhost:8080/health` → 200 OK  
 - [ ] `curl http://localhost:8080/geo/status` zeigt sinnvollen Status (Master: validated_at gesetzt nach erstem Lauf; Follower: Übernahme nach Ablauf der Staged-Delays)  

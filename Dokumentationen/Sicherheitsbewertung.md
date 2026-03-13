@@ -14,23 +14,6 @@
 
 ---
 
-## 2. Kritische Befunde
-
-### 2.1 HAProxy Stats: Zugangsdaten im Repository und Bindung
-
-- **Ort:** `conf/haproxy.cfg` Zeilen 44–50.
-- **Problem:**
-  - `stats auth admin:RaLL8ATBg274qpTs` ist **fest im Repo** hinterlegt. Jeder mit Repo-Zugriff kennt das Passwort.
-  - `stats admin if TRUE` erlaubt mit diesem Passwort **volle Admin-Funktionen** (Reload, Server deaktivieren, Konfiguration auslesen usw.).
-  - Stats-Frontend ist mit `bind :56708` auf **allen Interfaces** gebunden; in `docker-compose.yaml` ist Port **56708** nach außen gemappt.
-- **Risiko:** Wenn Port 56708 aus dem Netz erreichbar ist (z. B. Firewall öffnet ihn), kann ein Angreifer mit dem bekannten Passwort die gesamte HAProxy-Instanz steuern und den Dienst lahmlegen oder umkonfigurieren.
-- **Empfehlung:**
-  1. **Keine echten Zugangsdaten im Repo.** Stats-Auth per Deployment (z. B. envsubst beim Start, oder separate Config pro Umgebung) setzen und nur Platzhalter/Beispiel in Repo lassen.
-  2. Stats-Frontend nur binden, wo nötig: z. B. `bind 127.0.0.1:56708` und Port 56708 in `docker-compose` **nicht** veröffentlichen, Zugriff nur über Host (z. B. `docker exec` oder SSH-Port-Forward).
-  3. In der Doku (z. B. Installation/Checkliste) festhalten: Stats-Passwort und -URI pro Umgebung setzen und Port-Freigabe prüfen.
-
----
-
 ### 2.2 Reload: Shell-Interpolation (Command Injection)
 
 - **Ort:** `geo-manager/geo_manager/reload.py`, Zeile 27.

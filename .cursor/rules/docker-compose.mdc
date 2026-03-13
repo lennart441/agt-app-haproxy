@@ -7,6 +7,6 @@ alwaysApply: false
 # Docker & Compose
 
 - **Eine** `docker-compose.yaml` für alle Knoten; keine Varianten pro Server. Unterschiede nur über `.env` (NODE_NAME, NODE_PRIO, MESH_NODES, ANCHOR_IPS, GEO_SOURCE_URL usw.).
-- Maps: `./conf/maps` → `/usr/local/etc/haproxy/maps` (HAProxy + Geo-Manager). Socket: Volume `haproxy-socket` → `/var/run/haproxy-stat` (Reload).
+- Config: `./conf/conf.d` → `/usr/local/etc/haproxy/conf.d` (read-only); Entrypoint verarbeitet nach `/tmp/conf.d/`. Maps: `./conf/maps` → `/usr/local/etc/haproxy/maps` (HAProxy + Geo-Manager). Socket: Volume `haproxy-stat` → `/var/run/haproxy-stat` (Reload).
 - Geo-Manager-Build: Kontext Repo-Root, `docker build -f geo-manager/Dockerfile .`; COPY-Pfad `geo-manager/geo_manager/`.
 - Neue ENV in Compose (environment) und in `.env.example` mit kurzer Erklärung dokumentieren.

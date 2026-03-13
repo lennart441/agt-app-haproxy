@@ -163,7 +163,7 @@ class Config:
             geo_blocks_ipv6_url=os.environ.get("GEO_BLOCKS_IPV6_URL", "").strip() or None,
             map_dir=os.environ.get("MAP_DIR", "/usr/local/etc/haproxy/maps"),
             haproxy_cfg_path=os.environ.get(
-                "HAPROXY_CFG_PATH", "/usr/local/etc/haproxy/haproxy.cfg"
+                "HAPROXY_CFG_PATH", "/usr/local/etc/haproxy/conf.d"
             ),
             haproxy_socket=os.environ.get("HAPROXY_SOCKET", "/var/run/haproxy.sock"),
             stage_delay_prio2_hours=delay2,

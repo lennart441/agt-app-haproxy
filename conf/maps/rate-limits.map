@@ -1,0 +1,10 @@
+# Route-ID → Max Requests/Sekunde (RPS).
+# Änderungen erfordern HAProxy-Reload (oder Runtime-API: set map).
+#
+# Format: <route_id>	<max_rps>
+api_get	50
+api_sync	200
+api_report	25
+api_primaer	300
+website	2000
+client	2000

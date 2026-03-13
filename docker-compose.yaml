@@ -19,7 +19,7 @@ services:
 
     entrypoint: ["sh", "/docker-entrypoint.sh"]
     # Master-Worker nötig, damit "reload" am Master-CLI Maps neu lädt (ohne -W würde reload am Stats-Socket ignoriert).
-    command: ["haproxy", "-W", "-S", "/var/run/haproxy-stat/master", "-f", "/tmp/haproxy.cfg"]
+    command: ["haproxy", "-W", "-S", "/var/run/haproxy-stat/master", "-f", "/tmp/conf.d/"]
 
     ports:
       - "80:80"
@@ -29,7 +29,7 @@ services:
       - "56708:56708"
 
     volumes:
-      - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./conf/conf.d:/usr/local/etc/haproxy/conf.d:ro
       - ./scripts/haproxy-docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./ssl:/etc/ssl/certs:ro
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
@@ -42,7 +42,7 @@ services:
       net.ipv4.ip_unprivileged_port_start: 0
 
     healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/tmp/haproxy.cfg"]
+      test: ["CMD", "haproxy", "-c", "-f", "/tmp/conf.d/"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -116,7 +116,7 @@ services:
       - GEO_LOCATIONS_URL=${GEO_LOCATIONS_URL:-}
       - GEO_BLOCKS_IPV6_URL=${GEO_BLOCKS_IPV6_URL:-}
       - MAP_DIR=/usr/local/etc/haproxy/maps
-      - HAPROXY_CFG_PATH=/usr/local/etc/haproxy/haproxy.cfg
+      - HAPROXY_CFG_PATH=/usr/local/etc/haproxy/conf.d
       - HAPROXY_SOCKET=/var/run/haproxy-stat/master
       # Für haproxy -c (Syntax-Check): Zertifikat unter diesem Pfad (ssl separat gemountet, /etc/ssl/certs = CA-Bundle)
       - HAPROXY_CRT_PATH_FOR_VALIDATION=/etc/ssl/haproxy-pem/haproxy.pem
@@ -147,7 +147,7 @@ services:
     volumes:
       - ./conf/maps:/usr/local/etc/haproxy/maps
       - ./conf/test-data:/data:ro
-      - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./conf/conf.d:/usr/local/etc/haproxy/conf.d:ro
       - ./conf/errors:/usr/local/etc/haproxy/errors:ro
       - ./conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
       # ssl nur unter /etc/ssl/haproxy-pem (nicht /etc/ssl/certs), damit CA-Bundle für HTTPS-Downloads erhalten bleibt

@@ -11,5 +11,5 @@ alwaysApply: true
 - BOS-System (lebens-/einsatzkritisch). Eine `docker-compose.yaml`, Differenzierung nur über `.env` pro Server.
 - Komponenten: HAProxy 3.2, Coraza SPOA, Geo-Manager (Python). Geo-Manager = Safety Pipeline: Validierung (Syntax, Size, Anchor) + Staged Rollout (Prio 1 sofort, 2 nach 48h, 3 nach 96h).
 - Python-Code lebt in `geo-manager/geo_manager/`. Tests in `geo-manager/tests/`; **100 % Coverage** für `geo_manager` einhalten (`pytest --cov=geo_manager --cov-fail-under=100`).
-- Neue ENV in `config.py` + `.env.example` + ggf. Compose. HAProxy-Änderungen in `conf/haproxy.cfg`; Geo/Whitelist-ACLs vor dem WAF belassen.
+- Neue ENV in `config.py` + `.env.example` + ggf. Compose. HAProxy-Änderungen in `conf/conf.d/`; Routing in `conf/maps/routing.map`; Rate-Limits in `conf/maps/rate-limits.map`.
 - Keine Secrets committen; Referenz: `sys-doku.md`, README, Plan in `.cursor/plans/`.
