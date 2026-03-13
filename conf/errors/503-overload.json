@@ -1,0 +1,8 @@
+{
+  "error": "backend_overload",
+  "http_status": 503,
+  "category": "overload",
+  "message": "Service voruebergehend ueberlastet. Bitte Anfrage-Frequenz reduzieren.",
+  "hint": "The backend is temporarily overloaded. Clients should increase their polling interval and retry after the indicated delay.",
+  "retry_after_seconds": 5
+}

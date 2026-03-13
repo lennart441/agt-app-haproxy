@@ -1,0 +1,11 @@
+# Backend-ID → Max. Requests/Sekunde GLOBAL (alle IPs zusammen, cluster-weit).
+# Schützt Backends vor Überlastung. Bei Überschreitung: 503 mit Overload-Signal.
+# Clients können darauf reagieren (z.B. Sync-Intervall erhöhen).
+# Änderungen erfordern HAProxy-Reload (oder Runtime-API: set map).
+# Siehe: Dokumentationen/Rate-Limiting.md
+#
+# Format: <backend_id>	<max_rps_global>
+api_sync	200
+api_primaer	100
+api_get	50
+api_report	30

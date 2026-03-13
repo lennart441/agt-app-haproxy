@@ -1,10 +1,15 @@
-# Route-ID → Max Requests/Sekunde (RPS).
+# Route-ID → Max. Requests pro Zeitfenster (cluster-weit, pro IP).
+# Die Werte entsprechen den API-seitigen Rate-Limits.
+# Zeitfenster sind in den jeweiligen Stick-Tables definiert (30-stick-tables.cfg).
 # Änderungen erfordern HAProxy-Reload (oder Runtime-API: set map).
+# Siehe: Dokumentationen/Rate-Limiting.md
 #
-# Format: <route_id>	<max_rps>
-api_get	50
-api_sync	200
-api_report	25
-api_primaer	300
+# Format: <route_id>	<max_requests_pro_fenster>
+api_get	20
+api_sync	1500
+api_report	10
+api_primaer	120
+api_primaer_reqcode	30
+api_primaer_verify	20
 website	2000
 client	2000

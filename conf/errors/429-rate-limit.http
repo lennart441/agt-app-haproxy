@@ -6,9 +6,8 @@ Content-Type: application/json
 {
   "error": "rate_limit_exceeded",
   "http_status": 429,
-  "category": "backend_rate_limit",
-  "message": "Too many requests for this service. Please slow down and retry later.",
-  "hint": "If you are a human user, please try again in a moment. If you are an automated client or monitoring system, reduce your request rate.",
-  "details": "The service has reached a configured per-backend request limit to protect the system under high load."
+  "category": "edge_rate_limit",
+  "message": "Zu viele Anfragen. Bitte versuchen Sie es spaeter erneut.",
+  "hint": "Rate limit per IP on HAProxy edge (cluster-wide). If you are a legitimate user, please wait and retry.",
+  "details": "Request rate for this IP has exceeded the configured limit for this endpoint. This limit is enforced globally across all cluster nodes."
 }
-

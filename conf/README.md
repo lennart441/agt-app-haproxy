@@ -20,14 +20,16 @@ conf/
 │   ├── whitelist.map                IP-Whitelist (RFC1918 + Anchors, Geo-Manager)
 │   ├── hosts.map                    Hostname → Typ (api/website/client)
 │   ├── routing.map                  Host+Pfad → Backend (map_beg Routing)
-│   └── rate-limits.map              Route-ID → max. Requests/Sekunde
+│   ├── rate-limits.map              Route-ID → max. Requests pro Zeitfenster (pro IP)
+│   └── overload-limits.map          Backend-ID → max. RPS global (Überlastungsschutz)
 ├── errors/                          Benutzerdefinierte HTTP-Fehlerseiten
 │   ├── 403.http                     Standard 403 Forbidden
 │   ├── 403-geo.http                 403 Geo-Block
 │   ├── 403-waf.http                 403 WAF-Block
 │   ├── 404.http                     404 Not Found
-│   ├── 429-rate-limit.http          429 Rate Limit
-│   └── 503.http                     503 Service Unavailable
+│   ├── 429-rate-limit.http          429 Rate Limit (per-IP)
+│   ├── 503.http                     503 Service Unavailable
+│   └── 503-overload.json            503 Backend-Überlastung (JSON-Body für Clients)
 ├── coraza.cfg                       SPOE-Konfiguration für Coraza WAF
 └── coraza-spoa.yaml                 Coraza SPOA Agent-Config
 ```
@@ -84,23 +86,45 @@ client.agt-app.de/	client_backend_apache
 
 ### rate-limits.map – Rate-Limit-Schwellenwerte
 
-Definiert max. Requests/Sekunde pro Route-ID:
+Definiert max. Requests **pro Zeitfenster und IP** pro Route-ID. Die Zeitfenster sind in den
+jeweiligen Stick-Tables definiert (`30-stick-tables.cfg`). Limits sind identisch zu den API-seitigen
+Rate-Limits und gelten cluster-weit über Peer-Synchronisation.
+
+Ausführliche Dokumentation: `Dokumentationen/Rate-Limiting.md`.
 
 ```
-api_get	50
-api_sync	200
-api_report	25
-api_primaer	300
-website	2000
-client	2000
+api_get             20       # 20 req / 300s
+api_sync            1500     # 1500 req / 300s
+api_report          10       # 10 req / 60s
+api_primaer         120      # 120 req / 300s
+api_primaer_reqcode 30       # 30 req / 300s
+api_primaer_verify  20       # 20 req / 600s
+website             2000     # 2000 req/s
+client              2000     # 2000 req/s
 ```
 
-**Rate-Limit ändern**: Wert in der Map anpassen → HAProxy-Reload.
+**Rate-Limit ändern**: Wert in der Map anpassen → HAProxy-Reload (oder `set map` via Runtime-API).
 
 **Neues Rate-Limit hinzufügen**:
 1. Stick-Table-Backend in `30-stick-tables.cfg`
-2. `track-sc2`- und `set-var(txn.rl_id)`-Regeln in `50-frontend-https.cfg`
+2. ACL + `track-sc2`- und `set-var(txn.rl_id)`-Regeln in `50-frontend-https.cfg`
 3. Eintrag in `rate-limits.map`
+4. Optional: `track-sc3` + `set-var(txn.ol_id)` + Eintrag in `overload-limits.map`
+5. `Dokumentationen/Rate-Limiting.md` aktualisieren
+
+### overload-limits.map – Globaler Backend-Überlastungsschutz
+
+Definiert max. Requests **pro Sekunde, global über alle IPs** pro Backend. Schützt Backends vor
+Überlastung. Bei Überschreitung: 503 mit Overload-Signal (Clients können Intervall erhöhen).
+
+```
+api_sync    200     # 200 req/s gesamt
+api_primaer 100     # 100 req/s gesamt
+api_get     50      # 50 req/s gesamt
+api_report  30      # 30 req/s gesamt
+```
+
+**Overload-Limit ändern**: Wert in der Map anpassen → HAProxy-Reload (oder `set map` via Runtime-API).
 
 ## Platzhalter (Template-Variablen)
 
@@ -139,7 +163,7 @@ Der Entrypoint:
 | Aufgabe | Wo |
 |---|---|
 | Neuer API-Endpunkt | `routing.map` + `60-backends.cfg` |
-| Rate-Limit ändern | `rate-limits.map` |
+| Rate-Limit ändern | `rate-limits.map` / `overload-limits.map` |
 | Neuer Host | `hosts.map` + `routing.map` |
 | Timeout ändern | `20-defaults.cfg` |
 | SSL-Parameter | `00-global.cfg` oder `50-frontend-https.cfg` |
