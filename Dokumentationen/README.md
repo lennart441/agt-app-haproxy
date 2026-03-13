@@ -11,5 +11,6 @@ In diesem Ordner werden alle Projekt-Dokumentationen abgelegt: Installationsanle
 | [Sicherheitsbewertung.md](Sicherheitsbewertung.md) | Production-Readiness, Sicherheitsbewertung und Checkliste vor Produktiveinsatz (Stats, Reload, Geo-Manager, Mesh). |
 | [Ausfall-Szenarien.md](Ausfall-Szenarien.md) | Runbook: Was tun bei Geo-Fetch-Fehler, Reload-Fehler, Fail-Open, Master ausgefallen, Rollback der Maps. |
 | [Rate-Limiting.md](Rate-Limiting.md) | Per-IP Rate-Limiting auf HAProxy-Ebene (cluster-weit): Limits, Architektur, Konfiguration, Vergleich mit API-Limits. |
+| [Integrationstests.md](Integrationstests.md) | Docker-basierte HAProxy-Integrationstests: Architektur, alle 38 Testfälle, Fixtures, Erweiterung, CI-Integration. |
 
 Neue Doku-Dateien einfach hier anlegen und in der Tabelle oben ergänzen.

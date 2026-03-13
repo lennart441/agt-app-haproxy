@@ -1,0 +1,92 @@
+# HAProxy-Integrationstests: Echte HAProxy-Config gegen Dummy-Backends.
+# Gestartet ueber: scripts/run-haproxy-tests.sh
+
+services:
+  dummy-backend:
+    image: python:3.11-alpine
+    volumes:
+      - ./fixtures/dummy_backend.py:/app/dummy_backend.py:ro
+    command: ["python", "/app/dummy_backend.py"]
+    networks:
+      - test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:3101/index.html"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 3s
+
+  coraza-spoa:
+    build:
+      context: ../..
+      dockerfile: coraza/Dockerfile.coraza
+    command: ["-config", "/etc/coraza-spoa/config.yaml"]
+    volumes:
+      - ../../conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
+      - ../../coraza/rules:/etc/coraza-spoa/rules:ro
+    networks:
+      test-net:
+        aliases:
+          - coraza-spoa
+
+  haproxy:
+    build:
+      context: ../..
+      dockerfile: haproxy/Dockerfile
+    environment:
+      - NODE_NAME=agt-1
+      - MESH_NODES=dummy-backend,dummy-backend,dummy-backend
+      - CLUSTER_MAXCONN=${TEST_CLUSTER_MAXCONN:-5}
+      - GEO_ALLOWED_COUNTRIES=DE,AT,CH
+      - STATS_USER=admin
+      - STATS_PASSWORD=test
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
+    command: ["haproxy", "-W", "-S", "/var/run/haproxy-stat/master", "-f", "/tmp/conf.d/"]
+    volumes:
+      - ../../conf/conf.d:/usr/local/etc/haproxy/conf.d:ro
+      - ../../scripts/haproxy-docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - ../../conf/errors:/usr/local/etc/haproxy/errors:ro
+      - ../../conf/coraza.cfg:/usr/local/etc/haproxy/coraza.cfg:ro
+      - ${TEST_MAP_DIR:-../../conf/maps}:/usr/local/etc/haproxy/maps
+      - ${TEST_SSL_DIR:-../../ssl}:/etc/ssl/certs:ro
+      - haproxy-stat:/var/run/haproxy-stat
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    depends_on:
+      coraza-spoa:
+        condition: service_started
+      dummy-backend:
+        condition: service_healthy
+    networks:
+      - test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8404/metrics"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 8s
+
+  test-runner:
+    build:
+      context: ../..
+      dockerfile: tests/haproxy/Dockerfile.test-runner
+    environment:
+      - HAPROXY_HOST=haproxy
+      - HAPROXY_HTTPS_PORT=443
+      - HAPROXY_HTTP_PORT=80
+      - HAPROXY_STATS_SOCKET=/var/run/haproxy-stat/socket
+      - PYTEST_ARGS=${PYTEST_ARGS:--v --tb=short}
+    command: ["sh", "-c", "exec pytest $$PYTEST_ARGS"]
+    volumes:
+      - haproxy-stat:/var/run/haproxy-stat
+    depends_on:
+      haproxy:
+        condition: service_healthy
+    networks:
+      - test-net
+
+networks:
+  test-net: {}
+
+volumes:
+  haproxy-stat:

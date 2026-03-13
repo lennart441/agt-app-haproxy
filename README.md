@@ -147,11 +147,26 @@ Health-Checks (intern): z. B. `GET /v3/sync-api/ready`, `GET /v3/report/ready`
 
 ## Tests
 
+### Geo-Manager Unit-Tests (100 % Coverage)
+
 ```bash
 cd geo-manager
 pip install -r requirements-dev.txt  # oder: pytest pytest-cov
 pytest tests/ -v --cov=geo_manager --cov-fail-under=100 --cov-report=term-missing
 ```
+
+### HAProxy-Integrationstests
+
+Docker-basierte End-to-End-Tests gegen die echte HAProxy-Konfiguration (inkl. Coraza WAF). Getestet werden: Per-IP Rate-Limiting, Backend-Überlastungsschutz, Coraza WAF (SQLi, XSS, RCE, Auto-Ban), Geo-Blocking mit Map-Reload, SSL-Zertifikat-Reload ohne Downtime, Cluster-Verbindungslimit und Routing/Fehlerseiten.
+
+```bash
+./scripts/run-haproxy-tests.sh                  # Alle Tests (Standard)
+./scripts/run-haproxy-tests.sh -k test_waf -v   # Nur WAF-Tests
+```
+
+Das Skript generiert ein Testzertifikat, kopiert die Maps in ein Temp-Verzeichnis (Repo bleibt unberührt), startet die Testumgebung per Docker Compose und räumt danach auf. Voraussetzungen: Docker (Compose v2), openssl. Laufzeit ca. 30–60 s (exkl. Docker-Build beim ersten Mal).
+
+Ausführliche Dokumentation: [Dokumentationen/Integrationstests.md](Dokumentationen/Integrationstests.md).
 
 ## Lizenz / Hinweis
 

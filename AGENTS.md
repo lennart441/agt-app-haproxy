@@ -36,10 +36,11 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 | `geo-manager/` | Python-Paket `geo_manager`: Config, Fetcher, Validierung, Staging, Reload, HTTP-Status; plus Tests. |
 | `geo-manager/geo_manager/` | Quellcode: `config.py`, `fetcher.py`, `validation.py`, `staging.py`, `reload.py`, `main.py`, `__main__.py`. |
 | `geo-manager/tests/` | Pytest-Tests; Ziel 100 % Coverage für `geo_manager`. |
+| `tests/haproxy/` | Docker-basierte Integrationstests für die HAProxy-Config (Rate-Limits, WAF, Geo, Cert-Reload, Routing). Runner: `scripts/run-haproxy-tests.sh`. |
 | `.env.example` | Vorlage für alle ENV-Variablen; pro Server eigene `.env`. |
 | `docker-compose.yaml` | Einheitliche Definition für haproxy, coraza-spoa, geo-manager. |
 | `Dokumentationen/` | Projekt-Dokumentationen: Installation, Betrieb, Architektur, Wartung. Hier werden alle Doku-Dateien abgelegt (siehe `Dokumentationen/README.md`). |
-| `scripts/` | Hilfsskripte: `gen-dev-cert.sh` (lokaler Test: SSL + Socket), `deploy-haproxy-certs.sh` (Let's Encrypt-Zertifikate auf alle Knoten deployen). Konfiguration Deploy: `scripts/cert-deploy.env` (Vorlage: `cert-deploy.env.example`). |
+| `scripts/` | Hilfsskripte: `gen-dev-cert.sh` (lokaler Test: SSL + Socket), `deploy-haproxy-certs.sh` (Let's Encrypt-Zertifikate auf alle Knoten deployen), `run-haproxy-tests.sh` (HAProxy-Integrationstests starten). Konfiguration Deploy: `scripts/cert-deploy.env` (Vorlage: `cert-deploy.env.example`). |
 
 ---
 
@@ -72,7 +73,8 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
   - Paketname: `geo_manager` (Unterverzeichnis `geo-manager/geo_manager/`).
   - Einstieg: `python -m geo_manager` (siehe `__main__.py`).
   - Nur Standardbibliothek für Runtime (optional requests/maxminddb später); Tests: pytest, pytest-cov.
-- **Tests**: Immer mit `--cov=geo_manager --cov-fail-under=100` laufen lassen; neue Logik in `geo_manager` durch Tests abdecken.
+- **Tests (geo-manager)**: Immer mit `--cov=geo_manager --cov-fail-under=100` laufen lassen; neue Logik in `geo_manager` durch Tests abdecken.
+- **Tests (HAProxy-Integration)**: Bei Änderungen an HAProxy-Config (`conf/conf.d/`, `conf/maps/`), WAF-Config oder Entrypoint: `./scripts/run-haproxy-tests.sh` ausführen. Neue Sicherheitsfeatures dort durch Testfälle absichern. Testdateien unter `tests/haproxy/test_*.py`; Fixtures in `tests/haproxy/conftest.py`.
 - **Sprache**: Kommentare und Commit-Messages auf Deutsch oder Englisch konsistent halten; Nutzerdokumentation (README) auf Deutsch.
 
 ---
@@ -87,11 +89,14 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
 | HAProxy-Frontend/Backend anpassen | `conf/conf.d/50-frontend-https.cfg` (Frontend), `conf/conf.d/60-backends.cfg` (Backends); Routing in `conf/maps/routing.map`. |
 | Neue Route / neues Rate-Limit | `conf/maps/routing.map`, `conf/maps/rate-limits.map`, ggf. `conf/conf.d/30-stick-tables.cfg`. |
 | Coraza/WAF-Regeln | `conf/coraza-spoa.yaml`, `coraza/rules/coreruleset/` (Submodule), Anpassungen in `coraza/rules/custom/`. |
-| CI anpassen | `.github/workflows/ci.yml` (Tests, Docker-Builds). |
+| CI anpassen | `.github/workflows/ci.yml` (Tests, Docker-Builds, HAProxy-Integration). |
+| Neuer HAProxy-Integrationstest | `tests/haproxy/test_*.py` (neuer Test), `tests/haproxy/conftest.py` (Fixtures/Helpers), ggf. `tests/haproxy/fixtures/dummy_backend.py` (Backend-Verhalten). |
 
 ---
 
 ## 8. Tests ausführen
+
+### Geo-Manager Unit-Tests (100 % Coverage)
 
 ```bash
 cd geo-manager
@@ -99,7 +104,20 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 PYTHONPATH=. .venv/bin/pytest tests/ -v --cov=geo_manager --cov-fail-under=100 --cov-report=term-missing
 ```
 
-Docker-Build (aus Repo-Root):
+### HAProxy-Integrationstests (Docker-basiert)
+
+```bash
+./scripts/run-haproxy-tests.sh                     # Alle 38 Tests
+./scripts/run-haproxy-tests.sh -k test_waf -v      # Nur WAF-Tests
+./scripts/run-haproxy-tests.sh -k test_routing      # Nur Routing-Tests
+PYTEST_ARGS="-x -v" ./scripts/run-haproxy-tests.sh # Stopp beim ersten Fehler
+```
+
+Das Skript baut die Testumgebung (HAProxy + Coraza + Dummy-Backend + Test-Runner) per Docker Compose, führt pytest aus und räumt danach auf. Voraussetzungen: Docker (Compose v2), openssl. Laufzeit ca. 30–60 s.
+
+Testbereiche: Routing, Per-IP Rate-Limiting, Backend-Überlastungsschutz, Coraza WAF (SQLi/XSS/RCE/Auto-Ban), Geo-Blocking + Map-Reload, SSL-Cert-Reload ohne Downtime, Cluster-Verbindungslimit. Ausführliche Doku: `Dokumentationen/Integrationstests.md`.
+
+### Docker-Build (Smoke-Test)
 
 ```bash
 docker build -f geo-manager/Dockerfile -t geo-manager:test .
@@ -110,7 +128,7 @@ docker build -f coraza/Dockerfile.coraza -t coraza-spoa:test .
 
 ## 9. Referenzen
 
-- **Dokumentationen**: Ordner `Dokumentationen/` – hier liegen alle Projekt-Dokumentationen (Installation, Betrieb, Wartung usw.). Einstieg: `Dokumentationen/README.md`; ausführliche Installationsanleitung: `Dokumentationen/Installation.md`.
+- **Dokumentationen**: Ordner `Dokumentationen/` – hier liegen alle Projekt-Dokumentationen (Installation, Betrieb, Wartung usw.). Einstieg: `Dokumentationen/README.md`; ausführliche Installationsanleitung: `Dokumentationen/Installation.md`; Integrationstests: `Dokumentationen/Integrationstests.md`.
 - **Installation/Historie**: `sys-doku.md` (bestehende Server-Setups, WireGuard, Zertifikate).
 - **Spezifikation/Plan**: Cursor-Plan „HA Geo-Blocking Staged Rollout“ (Architektur, Phasen, Implementierungsreihenfolge).
 - **Deployment**: `README.md` (Deployment, Geo-Manager-Kurzbeschreibung, Tests).

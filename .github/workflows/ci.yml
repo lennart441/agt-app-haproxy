@@ -45,3 +45,13 @@ jobs:
 
       - name: Build Coraza image
         run: docker build -f coraza/Dockerfile.coraza -t coraza-spoa:test .
+
+  haproxy-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run HAProxy integration tests
+        run: ./scripts/run-haproxy-tests.sh
