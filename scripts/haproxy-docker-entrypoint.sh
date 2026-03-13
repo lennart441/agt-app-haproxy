@@ -34,9 +34,15 @@ GEO_REGEX="$(echo "$GEO_ALLOWED_COUNTRIES" | sed 's/ *, */|/g' | sed 's/^/(/' | 
 
 # 1) NODE_NAME, CLUSTER_MAXCONN, Geo-Länder-Regex ersetzen
 # 2) Peers-Zeilen: lokaler Peer ohne IP (Template hat feste 172.20.0.x; ersetze durch generierte Zeilen)
+# Stats-Zugangsdaten (aus ENV, Defaults nur für Notfall)
+STATS_USER="${STATS_USER:-admin}"
+STATS_PASSWORD="${STATS_PASSWORD:-change-me}"
+
 # GEO_REGEX enthält "|", daher # als sed-Delimiter statt |
 sed -e "s|__NODE_NAME__|${NODE_NAME}|g" \
     -e "s|__CLUSTER_MAXCONN__|${CLUSTER_MAXCONN}|g" \
+    -e "s|__STATS_USER__|${STATS_USER}|g" \
+    -e "s|__STATS_PASSWORD__|${STATS_PASSWORD}|g" \
     -e "s#__GEO_ALLOWED_COUNTRIES_REGEX__#${GEO_REGEX}#g" \
     -e "s|   server agt-1 172.20.0.1:50000|${LINE1}|" \
     -e "s|   server agt-2 172.20.0.2:50000|${LINE2}|" \

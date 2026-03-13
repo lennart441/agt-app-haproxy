@@ -26,6 +26,7 @@ services:
       - "443:443"
       - "50000:50000"
       - "8404:8404"
+      - "56708:56708"
 
     volumes:
       - ./conf/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
