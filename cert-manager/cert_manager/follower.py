@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 
 from .config import Config
 from .leader import write_target_pem
+from .metrics import inc_follower_sync_failure, inc_follower_sync_success
 from .state import CertState, compute_version, get_state, set_state_from_pem
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ def run_follower_once(config: Config) -> bool:
         return False
     result = get_master_status(config)
     if result is None:
+        inc_follower_sync_failure()
         return False
     master_ip, master_state = result
     need_bootstrap = not os.path.exists(config.target_pem_path)
@@ -152,9 +154,11 @@ def run_follower_once(config: Config) -> bool:
         return False
     pem = download_cert_from_master(master_ip, config, master_state.version)
     if pem is None:
+        inc_follower_sync_failure()
         return False
     write_target_pem(config, pem)
     set_state_from_pem(pem)
+    inc_follower_sync_success()
     logger.info(
         "Follower activated certificate version %s from %s",
         master_state.version,

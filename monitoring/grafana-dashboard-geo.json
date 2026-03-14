@@ -63,6 +63,41 @@
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 4 },
+      "id": 10,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_is_master", "refId": "A" }],
+      "title": "Cert-Manager: Master (1=Master, 0=Follower)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [], "unit": "dateTimeFromNow" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "id": 11,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_validated_since_timestamp_seconds", "refId": "A" }],
+      "title": "Cert: Zertifikat gueltig seit",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
+      "id": 12,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_deploy_total{outcome=\"success\"}", "legendFormat": "Deploy OK", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_deploy_total{outcome=\"failure\"}", "legendFormat": "Deploy Fail", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_follower_sync_total{outcome=\"success\"}", "legendFormat": "Sync OK", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cert_follower_sync_total{outcome=\"failure\"}", "legendFormat": "Sync Fail", "refId": "D" }
+      ],
+      "title": "Cert: Deploy / Sync Counter",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 8 },
       "id": 6,
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "geo_cluster_node_reachable", "legendFormat": "{{node_ip}}", "refId": "A" }],
@@ -77,17 +112,49 @@
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "geo_cluster_node_latency_ms", "legendFormat": "{{node_ip}}", "refId": "A" }],
       "title": "Cluster: Latenz pro Knoten (ms)",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 14 },
+      "id": 20,
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "haproxy_process_current_connections", "legendFormat": "{{instance}}", "refId": "A" }],
+      "title": "HAProxy: Aktive Verbindungen",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
+      "id": 21,
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rate(haproxy_frontend_http_requests_total[5m])", "legendFormat": "{{proxy}} {{instance}}", "refId": "A" }
+      ],
+      "title": "HAProxy: Request-Rate (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "id": 22,
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rate(haproxy_backend_http_responses_total{code=\"5xx\"}[5m])", "legendFormat": "5xx {{proxy}} {{instance}}", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rate(haproxy_backend_http_responses_total{code=\"4xx\"}[5m])", "legendFormat": "4xx {{proxy}} {{instance}}", "refId": "B" }
+      ],
+      "title": "HAProxy: Error-Rate (4xx/5xx pro 5m)",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["geo-manager", "haproxy", "cluster"],
+  "tags": ["geo-manager", "cert-manager", "haproxy", "cluster"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Geo-Manager & Cluster",
+  "title": "HA-Cluster: Geo, Cert & HAProxy",
   "uid": "geo-cluster",
-  "version": 1
+  "version": 2
 }

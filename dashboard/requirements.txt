@@ -1,0 +1,4 @@
+#
+# Runtime requirements for dashboard.
+# Intentionally kept minimal; only Python stdlib is used.
+#

@@ -36,6 +36,9 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 | `geo-manager/` | Python-Paket `geo_manager`: Config, Fetcher, Validierung, Staging, Reload, HTTP-Status; plus Tests. |
 | `geo-manager/geo_manager/` | Quellcode: `config.py`, `fetcher.py`, `validation.py`, `staging.py`, `reload.py`, `main.py`, `__main__.py`. |
 | `geo-manager/tests/` | Pytest-Tests; Ziel 100 % Coverage für `geo_manager`. |
+| `cert-manager/` | Python-Paket `cert_manager`: Zertifikats-Synchronisation (Leader/Follower), HTTP-Status, Metrics. |
+| `cert-manager/cert_manager/` | Quellcode: `config.py`, `leader.py`, `follower.py`, `state.py`, `metrics.py`, `main.py`, `__main__.py`. |
+| `cert-manager/tests/` | Pytest-Tests; Ziel 100 % Coverage für `cert_manager`. |
 | `tests/haproxy/` | Docker-basierte Integrationstests für die HAProxy-Config (Rate-Limits, WAF, Geo, Cert-Reload, Routing). Runner: `scripts/run-haproxy-tests.sh`. |
 | `.env.example` | Vorlage für alle ENV-Variablen; pro Server eigene `.env`. |
 | `docker-compose.yaml` | Einheitliche Definition für haproxy, coraza-spoa, geo-manager. |
@@ -73,7 +76,12 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
   - Paketname: `geo_manager` (Unterverzeichnis `geo-manager/geo_manager/`).
   - Einstieg: `python -m geo_manager` (siehe `__main__.py`).
   - Nur Standardbibliothek für Runtime (optional requests/maxminddb später); Tests: pytest, pytest-cov.
+- **Python (cert-manager)**:
+  - Paketname: `cert_manager` (Unterverzeichnis `cert-manager/cert_manager/`).
+  - Einstieg: `python -m cert_manager` (siehe `__main__.py`).
+  - Nur Standardbibliothek für Runtime; Tests: pytest, pytest-cov.
 - **Tests (geo-manager)**: Immer mit `--cov=geo_manager --cov-fail-under=100` laufen lassen; neue Logik in `geo_manager` durch Tests abdecken.
+- **Tests (cert-manager)**: Immer mit `--cov=cert_manager --cov-fail-under=100` laufen lassen; neue Logik in `cert_manager` durch Tests abdecken.
 - **Tests (HAProxy-Integration)**: Bei Änderungen an HAProxy-Config (`conf/conf.d/`, `conf/maps/`), WAF-Config oder Entrypoint: `./scripts/run-haproxy-tests.sh` ausführen. Neue Sicherheitsfeatures dort durch Testfälle absichern. Testdateien unter `tests/haproxy/test_*.py`; Fixtures in `tests/haproxy/conftest.py`.
 - **Sprache**: Kommentare und Commit-Messages auf Deutsch oder Englisch konsistent halten; Nutzerdokumentation (README) auf Deutsch.
 
@@ -102,6 +110,14 @@ Logik liegt in `geo-manager/geo_manager/` (config, fetcher, validation, staging,
 cd geo-manager
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 PYTHONPATH=. .venv/bin/pytest tests/ -v --cov=geo_manager --cov-fail-under=100 --cov-report=term-missing
+```
+
+### Cert-Manager Unit-Tests (100 % Coverage)
+
+```bash
+cd cert-manager
+python -m venv .venv && .venv/bin/pip install pytest pytest-cov
+PYTHONPATH=. .venv/bin/pytest tests/ -v --cov=cert_manager --cov-fail-under=100 --cov-report=term-missing
 ```
 
 ### HAProxy-Integrationstests (Docker-basiert)
@@ -137,6 +153,7 @@ docker build -f coraza/Dockerfile.coraza -t coraza-spoa:test .
 
 ## 10. Hinweise für den Agenten
 
-- Beim Ändern der Safety-Pipeline (Validierung, Staging, Anchor-Check) zuerst Tests anpassen/erweitern und 100 % Coverage beibehalten.
+- Beim Ändern der Safety-Pipeline (Validierung, Staging, Anchor-Check) oder der Cert-Synchronisation zuerst Tests anpassen/erweitern und 100 % Coverage beibehalten.
+- **100 % Coverage ist Pflicht** für `geo_manager` und `cert_manager`. Neue Logik muss immer durch Tests abgedeckt werden; `--cov-fail-under=100` schlägt fehl, wenn Coverage sinkt.
 - Keine sensiblen Werte (Passwörter, Tokens) in Repo committen; nur Platzhalter in `.env.example`.
-- Bei neuen Abhängigkeiten: `geo-manager/requirements.txt` (Runtime) bzw. `requirements-dev.txt` (Tests) aktualisieren; Dockerfile anpassen, falls nötig.
+- Bei neuen Abhängigkeiten: `geo-manager/requirements.txt` (Runtime) bzw. `requirements-dev.txt` (Tests) aktualisieren; `cert-manager/requirements.txt` analog; Dockerfile anpassen, falls nötig.

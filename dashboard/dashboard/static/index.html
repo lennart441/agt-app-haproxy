@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HA-Cluster Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>HA-Cluster Dashboard</h1>
+      <span id="header-prio" class="badge badge-follower">...</span>
+    </div>
+    <div class="refresh-indicator">
+      <span class="dot"></span>
+      <span>Auto-Refresh 30s</span>
+      <button class="btn-refresh" onclick="manualRefresh()">Jetzt aktualisieren</button>
+    </div>
+  </div>
+  <p class="meta" style="margin-bottom:1.25rem">
+    Knoten: <strong id="header-node">...</strong>
+  </p>
+
+  <!-- Cluster overview -->
+  <div class="card full" style="margin-bottom:1.25rem">
+    <h2>Cluster-Uebersicht</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Knoten (IP)</th>
+            <th>Name</th>
+            <th>Prio</th>
+            <th>Geo validiert</th>
+            <th>Cert Version</th>
+            <th>Cert seit</th>
+            <th>Cert Rolle</th>
+            <th>Erreichbar</th>
+            <th>Fehler</th>
+          </tr>
+        </thead>
+        <tbody id="cluster-body">
+          <tr><td colspan="9"><div class="skeleton-table"><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- HAProxy stats -->
+  <div class="card full" style="margin-bottom:1.25rem">
+    <h2>HAProxy-Statistiken</h2>
+    <div id="haproxy-stats">
+      <div class="grid-4">
+        <div class="stat-box card"><div class="skeleton" style="width:60%;margin:auto"></div><div class="label">Aktive Verbindungen</div></div>
+        <div class="stat-box card"><div class="skeleton" style="width:60%;margin:auto"></div><div class="label">Verbindungen gesamt</div></div>
+        <div class="stat-box card"><div class="skeleton" style="width:60%;margin:auto"></div><div class="label">Requests gesamt</div></div>
+        <div class="stat-box card"><div class="skeleton" style="width:60%;margin:auto"></div><div class="label">Backends</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Geo + Cert + Deploy actions -->
+  <div class="grid-2">
+    <div class="card">
+      <h2>Geo-IP-Listen</h2>
+      <p class="meta">Status wird aus der Cluster-Uebersicht aggregiert. Geo-Master (Prio 1) laedt und validiert Listen; Follower uebernehmen nach Staged Delay.</p>
+      <div style="margin-top:0.75rem">
+        <button id="btn-deploy-geo" class="btn-deploy" onclick="deployGeo()">Deploy Geo-Listen jetzt</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Zertifikate</h2>
+      <p class="meta">Cert-Master baut PEM aus Certbot-Dateien; Follower synchronisieren per Staged Rollout.</p>
+      <div style="margin-top:0.75rem">
+        <button id="btn-deploy-cert" class="btn-deploy" onclick="deployCert()">Deploy Zertifikat jetzt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container health -->
+  <div class="card full" style="margin-bottom:1.25rem;margin-top:1.25rem">
+    <h2>Container-Status</h2>
+    <div id="containers-list" class="grid-3">
+      <div class="container-card"><div class="skeleton" style="width:100%"></div></div>
+      <div class="container-card"><div class="skeleton" style="width:100%"></div></div>
+      <div class="container-card"><div class="skeleton" style="width:100%"></div></div>
+    </div>
+  </div>
+
+  <!-- Log viewer -->
+  <div class="card full">
+    <h2>Container-Logs</h2>
+    <div class="log-tabs">
+      <button class="log-tab active" data-container="haproxy_gateway" onclick="selectLogTab('haproxy_gateway')">HAProxy</button>
+      <button class="log-tab" data-container="geo-manager" onclick="selectLogTab('geo-manager')">Geo-Manager</button>
+      <button class="log-tab" data-container="cert-manager" onclick="selectLogTab('cert-manager')">Cert-Manager</button>
+      <button class="log-tab" data-container="coraza-spoa" onclick="selectLogTab('coraza-spoa')">Coraza WAF</button>
+      <button class="log-tab" data-container="dashboard" onclick="selectLogTab('dashboard')">Dashboard</button>
+    </div>
+    <pre class="log-output" id="log-output">Lade Logs...</pre>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

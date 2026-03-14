@@ -58,3 +58,36 @@ groups:
         annotations:
           summary: "Geo-Cluster: Knoten nicht erreichbar"
           description: "Knoten {{ $labels.node_ip }} wird von mindestens einem anderen Knoten seit 15 Min. als nicht erreichbar gemeldet. Mesh/Netzwerk prüfen."
+
+  - name: cert-manager
+    interval: 30s
+    rules:
+      # Cert-Manager /health nicht erreichbar
+      - alert: CertManagerDown
+        expr: up{job="cert-manager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cert-Manager-Knoten nicht erreichbar"
+          description: "Prometheus kann {{ $labels.instance }} (job=cert-manager) seit 2 Min. nicht scrapen. Container/Dienst prüfen."
+
+      # Deploy-Fehler (PEM konnte nicht gebaut/geschrieben werden)
+      - alert: CertDeployFailure
+        expr: increase(cert_deploy_total{outcome="failure"}[1h]) >= 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cert-Manager: Wiederholte Deploy-Fehler"
+          description: "Knoten {{ $labels.instance }} meldet mindestens 2 Deploy-Fehler in der letzten Stunde. Certbot-Dateien und Berechtigungen prüfen."
+
+      # Follower-Sync dauerhaft fehlgeschlagen
+      - alert: CertFollowerSyncFailure
+        expr: increase(cert_follower_sync_total{outcome="failure"}[1h]) >= 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cert-Manager: Follower-Sync-Fehler"
+          description: "Follower {{ $labels.instance }} konnte in der letzten Stunde mindestens 3x nicht mit dem Master synchronisieren. Mesh-Verbindung und Master-Status prüfen."

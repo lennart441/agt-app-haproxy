@@ -9,6 +9,7 @@ import os
 from typing import Optional
 
 from .config import Config
+from .metrics import inc_deploy_failure, inc_deploy_success
 from .state import set_state_from_pem
 
 logger = logging.getLogger(__name__)
@@ -78,8 +79,10 @@ def run_leader_once(config: Config) -> bool:
     """
     pem = build_combined_pem(config)
     if pem is None:
+        inc_deploy_failure()
         return False
     write_target_pem(config, pem)
     set_state_from_pem(pem)
+    inc_deploy_success()
     return True
 

@@ -1,3 +1,5 @@
+import signal
+
 from cert_manager import main as main_module
 from cert_manager.config import Config
 
@@ -68,4 +70,38 @@ def test_cert_handler_404(monkeypatch):
     handler.do_GET()
     # Wir prüfen nur, dass eine Antwort generiert wurde.
     assert handler.wfile.getvalue()
+
+
+def test_main_shutdown_handler(monkeypatch):
+    cfg = Config.from_env()
+    cfg.cert_is_master = True
+
+    monkeypatch.setattr("cert_manager.main.Config.from_env", lambda: cfg)
+
+    shutdown_called = {}
+    signal_handlers = {}
+
+    class ShutdownServer:
+        def __init__(self, *args, **kwargs):
+            self.config = None
+
+        def serve_forever(self):
+            return
+
+        def shutdown(self):
+            shutdown_called["done"] = True
+
+    monkeypatch.setattr("cert_manager.main.HTTPServer", ShutdownServer)
+
+    def capture_signal(signum, handler):
+        signal_handlers[signum] = handler
+
+    monkeypatch.setattr(signal, "signal", capture_signal)
+    monkeypatch.setattr("cert_manager.main.run_leader_once", lambda c: True)
+
+    main_module.main()
+
+    assert signal.SIGTERM in signal_handlers
+    signal_handlers[signal.SIGTERM](signal.SIGTERM, None)
+    assert shutdown_called.get("done") is True
 

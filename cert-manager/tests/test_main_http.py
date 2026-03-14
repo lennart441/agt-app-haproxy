@@ -116,23 +116,24 @@ def test_cert_handler_download_no_state(monkeypatch):
     assert b"No certificate active" in raw
 
 
-def test_cert_handler_dashboard_renders(monkeypatch, tmp_path):
+def test_cert_handler_dashboard_removed(monkeypatch):
+    """Dashboard route was moved to dedicated dashboard container; cert-manager returns 404."""
     cfg = Config.from_env()
-    cfg.node_prio = 1
-    cfg.cert_is_master = True
-
-    # Zertifikat im State und auf Disk hinterlegen
-    state = set_state_from_pem(b"dummy-pem-dashboard")
-    tmp_pem = tmp_path / "haproxy.pem"
-    tmp_pem.write_bytes(b"dummy-pem-dashboard")
-    cfg.target_pem_path = str(tmp_pem)
-
     handler = _make_handler("/dashboard", cfg)
     handler.do_GET()
     raw = handler.wfile.getvalue()
-    body = raw.split(b"\r\n\r\n", 1)[1]
-    assert b"HA-Cluster Dashboard" in body
-    assert state.version.encode("utf-8") in body
+    assert b"404" in raw
+
+
+def test_cert_handler_geo_deploy_removed(monkeypatch):
+    """Geo-deploy proxy was moved to dashboard container; cert-manager returns 404."""
+    cfg = Config.from_env()
+    handler = _make_handler("/geo/deploy-now", cfg)
+    handler.command = "POST"
+    handler.requestline = "POST /geo/deploy-now HTTP/1.1"
+    handler.do_POST()
+    raw = handler.wfile.getvalue()
+    assert b"404" in raw
 
 
 def test_cert_handler_deploy_now_master(monkeypatch, tmp_path):
@@ -143,10 +144,9 @@ def test_cert_handler_deploy_now_master(monkeypatch, tmp_path):
     cfg.cert_is_master = True
 
     handler = _make_handler("/cert/deploy-now", cfg)
-    # Patch methods that BaseHTTPRequestHandler would normally provide
-    handler.send_response = SimpleNamespace(__call__=lambda *args, **kwargs: None)
-    handler.send_header = SimpleNamespace(__call__=lambda *args, **kwargs: None)
-    handler.end_headers = SimpleNamespace(__call__=lambda *args, **kwargs: None)
+    handler.send_response = lambda *args, **kwargs: None
+    handler.send_header = lambda *args, **kwargs: None
+    handler.end_headers = lambda *args, **kwargs: None
 
     called = {}
 
@@ -175,4 +175,40 @@ def test_cert_handler_deploy_now_forbidden_for_follower(monkeypatch):
     handler.send_error = fake_send_error  # type: ignore[assignment]
     handler.do_POST()
     assert errors.get("code") == 403
+
+
+def test_cert_handler_status_forbidden_without_cluster_key():
+    cfg = Config.from_env()
+    cfg.cluster_key = "my-secret"
+    cfg.cert_is_master = True
+    handler = _make_handler("/cert/status", cfg)
+    handler.do_GET()
+    raw = handler.wfile.getvalue()
+    assert b"403" in raw
+
+
+def test_cert_handler_download_forbidden_without_cluster_key():
+    cfg = Config.from_env()
+    cfg.cluster_key = "my-secret"
+    cfg.cert_is_master = True
+    handler = _make_handler("/cert/download?version=v1", cfg)
+    handler.do_GET()
+    raw = handler.wfile.getvalue()
+    assert b"403" in raw
+
+
+def test_cert_handler_deploy_now_failure(monkeypatch):
+    from cert_manager import main as main_mod
+
+    cfg = Config.from_env()
+    cfg.cert_is_master = True
+
+    def fake_run_leader_once(config):
+        return False
+
+    monkeypatch.setattr(main_mod, "run_leader_once", fake_run_leader_once)
+    handler = _make_handler("/cert/deploy-now", cfg)
+    handler.do_POST()
+    raw = handler.wfile.getvalue()
+    assert b"500" in raw
 

@@ -257,3 +257,44 @@ def test_run_follower_once_respects_delay_when_pem_exists(monkeypatch, tmp_path)
     assert ok is False
     assert target_pem.read_bytes() == b"existing-pem"
 
+
+def test_get_master_status_with_cluster_key(monkeypatch):
+    cfg = Config.from_env()
+    cfg.mesh_nodes = ["10.0.0.1"]
+    cfg.cluster_key = "my-secret"
+    payload = {
+        "node_prio": 1,
+        "node_name": "agt-1",
+        "cert_is_master": True,
+        "version": "v1",
+        "validated_since": "2024-01-01T00:00:00+00:00",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    captured = []
+
+    def fake_http_get(host, port, path, timeout=5.0):
+        captured.append(path)
+        return 200, body
+
+    monkeypatch.setattr("cert_manager.follower._http_get", fake_http_get)
+    result = get_master_status(cfg)
+    assert result is not None
+    assert "cluster_key=my-secret" in captured[0]
+
+
+def test_download_cert_from_master_with_cluster_key(monkeypatch):
+    cfg = Config.from_env()
+    cfg.cluster_key = "my-secret"
+    body = b"pem-bytes"
+    version = compute_version(body)
+    captured = []
+
+    def ok_http_get(host, port, path, timeout=5.0):
+        captured.append(path)
+        return 200, body
+
+    monkeypatch.setattr("cert_manager.follower._http_get", ok_http_get)
+    data = download_cert_from_master("10.0.0.1", cfg, version)
+    assert data == body
+    assert "cluster_key=my-secret" in captured[0]
+
