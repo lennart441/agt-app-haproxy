@@ -1,8 +1,0 @@
-# RFC 1918 + Loopback + IPv6 intern: immer erlaubt (Geo + WAF). Geo-Manager ergänzt ANCHOR_IPS.
-127.0.0.0/8	1
-10.0.0.0/8	1
-172.16.0.0/12	1
-192.168.0.0/16	1
-::1/128	1
-fe80::/10	1
-fc00::/7	1

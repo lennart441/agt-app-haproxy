@@ -1,4 +1,0 @@
-# Fail-open: Bis der Geo-Manager eine gültige Liste liefert, alle IPs durchlassen (erlaubtes Land).
-# Geo-Manager überschreibt mit echter Geo-Liste; danach gilt Staged Rollout.
-0.0.0.0/0	DE
-::/0	DE
