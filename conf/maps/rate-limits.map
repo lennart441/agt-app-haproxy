@@ -13,5 +13,6 @@ api_primaer_reqcode	30
 api_primaer_verify	20
 api_primaer_reqcode_mail	1
 api_primaer_verify_mail	5
+health_ready	100
 website	2000
 client	2000

@@ -74,11 +74,23 @@ API (Application)
 | **Website** | `website` | 1 s | 2000 | `st_rl_website` |
 | **Client** | `client` | 1 s | 2000 | `st_rl_client` |
 
-### 3.3 Sub-Route-Logik (Primaer-API)
+### 3.3 Health/Ready-Endpoints (Monitoring)
+
+| Endpoint | Route-ID | Zeitfenster | Max/IP | Stick-Table |
+|----------|----------|-------------|--------|-------------|
+| **Health/Ready** (`/v3/*/health`, `/v3/*/ready`) | `health_ready` | 60 s | 100 | `st_rl_health` |
+
+Health- und Ready-Endpoints aller APIs (`/v3/sync-api/ready`, `/v3/agt-get-api/health` etc.) haben ein **eigenes, großzügiges Limit**. Sie zählen **nicht** zum Standard-per-IP-Limit des jeweiligen Endpoints und **nicht** zum globalen Überlastungsschutz (sc3). Dadurch kann Uptime Kuma (oder anderes Monitoring) diese Endpoints prüfen, ohne das Budget für legitime API-Requests zu belasten.
+
+**Berechnung:** Uptime Kuma erzeugt ca. 9 req/min cluster-weit (3 Knoten × 3 req/min). Limit 100/60s = ca. 1000 % Puffer.
+
+**Weiterhin aktiver Schutz:** Geo-Blocking, WAF, globales Verbindungslimit (sc1) gelten auch für Health/Ready-Requests.
+
+### 3.4 Sub-Route-Logik (Primaer-API)
 
 Requests an `/v3/pri-api/request-code` und `/v3/pri-api/verify-code` werden **nur** gegen ihr spezifisches Limit geprüft (nicht zusätzlich gegen das allgemeine Primaer-Limit). Alle anderen `/v3/pri-api/*`-Requests fallen unter das allgemeine Primaer-Limit (120/300s).
 
-### 3.4 Vergleich HAProxy vs. API-Limits
+### 3.5 Vergleich HAProxy vs. API-Limits
 
 | Endpoint | HAProxy (pro IP) | API (pro IP) | Bemerkung |
 |----------|-----------------|--------------|-----------|
@@ -91,7 +103,7 @@ Requests an `/v3/pri-api/request-code` und `/v3/pri-api/verify-code` werden **nu
 
 **Per-Mail-Limits** (request-code: 1/120s pro Mail, verify-code: 5/600s pro Mail) bleiben ausschließlich in den APIs. HAProxy kann JSON-Bodies nicht zuverlässig parsen; das per-IP-Limit auf Edge-Ebene entschärft den Angriffsvektor bereits ausreichend.
 
-### 3.5 Response bei Überschreitung
+### 3.6 Response bei Überschreitung
 
 **HTTP 429 Too Many Requests** – Errorfile `conf/errors/429-rate-limit.http`:
 
@@ -126,7 +138,7 @@ Schützt jedes API-Backend vor Überlastung durch die **Gesamtlast aller IPs zus
 | **AGT-Get-API** | `api_get` | 50 | `st_overload` |
 | **Report-API** | `api_report` | 30 | `st_overload` |
 
-Alle Backends teilen sich eine Stick-Table (`st_overload`), aber mit unterschiedlichen Schlüsseln (Backend-ID als String). Website und Client haben kein Overload-Limit (statische Inhalte).
+Alle Backends teilen sich eine Stick-Table (`st_overload`), aber mit unterschiedlichen Schlüsseln (Backend-ID als String). Website und Client haben kein Overload-Limit (statische Inhalte). **Health/Ready-Requests** (`/v3/*/health`, `/v3/*/ready`) sind vom Overload-Tracking ausgenommen und zählen nicht zum globalen Zähler.
 
 **Primaer Sub-Routen:** request-code, verify-code und alle anderen Primaer-Pfade zählen zusammen als `api_primaer`. Das Overload-Limit gilt für die Gesamtlast auf das Primaer-Backend.
 
@@ -171,6 +183,7 @@ api_report          10       # 10 req / 60s
 api_primaer         120      # 120 req / 300s
 api_primaer_reqcode 30       # 30 req / 300s
 api_primaer_verify  20       # 20 req / 600s
+health_ready        100      # 100 req / 60s (Monitoring-Puffer)
 website             2000     # 2000 req/s
 client              2000     # 2000 req/s
 ```
@@ -235,8 +248,8 @@ Stick-Table in `conf/conf.d/30-stick-tables.cfg` ändern (z.B. `http_req_rate(30
 |------|-------|-------------|---------|
 | **sc0** | WAF Auto-Ban | `src` (IP) | `st_waf_blocks` |
 | **sc1** | Globales Verbindungslimit | `str(global)` | `st_global_conn` |
-| **sc2** | Per-IP Rate-Limiting | `src` (IP) | `st_rl_api_*`, `st_rl_website`, `st_rl_client` |
-| **sc3** | Backend-Überlastungsschutz | `str(<backend_id>)` | `st_overload` |
+| **sc2** | Per-IP Rate-Limiting | `src` (IP) | `st_rl_health`, `st_rl_api_*`, `st_rl_website`, `st_rl_client` |
+| **sc3** | Backend-Überlastungsschutz | `str(<backend_id>)` | `st_overload` (ohne Health/Ready) |
 
 Aktiviert durch `tune.stick-counters 4` in `00-global.cfg`.
 
