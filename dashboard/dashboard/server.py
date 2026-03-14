@@ -140,7 +140,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         cert_host = node_ip
         if (result["geo"] and result["geo"].get("node_name") == config.node_name
                 and result["geo"].get("node_prio") == config.node_prio):
-            cert_host = "127.0.0.1"
+            cert_host = "cert-manager"
         try:
             path = "/cert/status"
             if config.cert_cluster_key:
@@ -330,6 +330,10 @@ def _parse_haproxy_prometheus(raw: str) -> dict[str, Any]:
         elif "haproxy_process_requests_total " in line:
             val = line.split()[-1]
             stats["request_rate"] = int(float(val))
+
+    for b in _backends.values():
+        if "up" not in b and "status" in b:
+            b["up"] = b["status"]
 
     stats["frontends"] = list(_frontends.values())
     stats["backends"] = list(_backends.values())

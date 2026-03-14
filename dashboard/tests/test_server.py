@@ -190,6 +190,33 @@ haproxy_backend_http_responses_total{proxy="api_backend",code="5xx"} 10
     assert result["backends"][0]["responses"]["5xx"] == 10
 
 
+def test_parse_haproxy_prometheus_status_fallback():
+    """haproxy_backend_status (without haproxy_backend_up) must populate 'up'."""
+    sample = (
+        'haproxy_backend_status{proxy="web"} 1\n'
+        'haproxy_backend_current_sessions{proxy="web"} 3\n'
+        'haproxy_backend_status{proxy="down_be"} 0\n'
+    )
+    result = _parse_haproxy_prometheus(sample)
+    backends = {b["name"]: b for b in result["backends"]}
+    assert backends["web"]["status"] == 1
+    assert backends["web"]["up"] == 1
+    assert backends["down_be"]["status"] == 0
+    assert backends["down_be"]["up"] == 0
+
+
+def test_parse_haproxy_prometheus_up_takes_precedence():
+    """When both haproxy_backend_up and haproxy_backend_status exist, 'up' keeps its value."""
+    sample = (
+        'haproxy_backend_status{proxy="be1"} 1\n'
+        'haproxy_backend_up{proxy="be1"} 0\n'
+    )
+    result = _parse_haproxy_prometheus(sample)
+    be = result["backends"][0]
+    assert be["status"] == 1
+    assert be["up"] == 0
+
+
 def test_prom_label_extraction():
     line = 'haproxy_backend_http_responses_total{proxy="api",code="2xx"} 100'
     assert _prom_label(line, "proxy") == "api"
