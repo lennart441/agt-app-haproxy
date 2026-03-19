@@ -114,7 +114,16 @@ def validate_syntax(
             timeout=30,
         )
         if result.returncode != 0:
-            logger.error("haproxy -c failed: %s", result.stderr)
+            out = (getattr(result, "stdout", "") or "").strip()
+            err = (getattr(result, "stderr", "") or "").strip()
+            logger.error(
+                "haproxy -c failed (code=%s) for cfg_path=%s (cwd=%s). stdout: %r stderr: %r",
+                result.returncode,
+                haproxy_cfg_path,
+                map_dir,
+                out,
+                err,
+            )
             return False
         return True
     except FileNotFoundError:
