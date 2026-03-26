@@ -121,11 +121,11 @@ Testet Geo-IP-Filtering und unterbrechungsfreie Map-Updates via HAProxy Runtime-
 
 | Test | Prüft |
 |------|-------|
-| `test_geo_default_allows_all` | Default-`geo.map` (`0.0.0.0/0 → DE`) erlaubt alle Requests. |
-| `test_geo_blocked_country_gets_403` | Nach Map-Update (`XX` statt `DE`) und Whitelist-Clearing → 403 mit Geo-Block-Seite. |
-| `test_geo_whitelist_bypasses_block` | IP in `whitelist.map` umgeht Geo-Block trotz Ländersperre. |
+| `test_geo_default_allows_all` | Default-`geo_blocklist.map` ist leer (fail-open) und erlaubt alle Requests. |
+| `test_geo_blocked_country_gets_403` | Nach Map-Update (`0.0.0.0/0 -> 1`) und Whitelist-Clearing → 403 mit Geo-Block-Seite. |
+| `test_geo_whitelist_bypasses_block` | IP in `whitelist.map` umgeht Geo-Block trotz Blocklist-Treffer. |
 | `test_http_frontend_geo_block` | Port 80 liefert 403-geo statt 301-Redirect bei geblocktem Land. |
-| `test_geo_map_reload_no_downtime` | Parallele Map-Updates via `set map` verursachen keine 5xx-Fehler für laufende Requests. |
+| `test_geo_map_reload_no_downtime` | Parallele Blocklist-Map-Updates via `set map` verursachen keine 5xx-Fehler für laufende Requests. |
 
 ### SSL-Zertifikat-Reload (`test_cert_reload.py`, 2 Tests)
 

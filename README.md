@@ -59,7 +59,7 @@ Zum Durchspielen des kompletten Ablaufs (Download → Validierung → Umbau/Relo
    - Geo-Manager (Master) lädt die CSV, baut die Maps und triggert den HAProxy-Reload (erster Lauf kann etwas dauern).
    - Logs: `docker compose logs -f geo-manager`
    - Status: `curl -s http://localhost:8080/geo/status`
-   - Danach: `conf/maps/geo.map` und `conf/maps/whitelist.map` sind aktualisiert.
+   - Danach: `conf/maps/geo_blocklist.map` und `conf/maps/whitelist.map` sind aktualisiert.
 
 **Optional:** Eigene Test-CSV lokal bereitstellen: `GEO_SOURCE_URL=http://host.docker.internal:8000/geo-sample.csv` setzen und in einem Terminal `cd conf/test-data && python3 -m http.server 8000` starten.
 

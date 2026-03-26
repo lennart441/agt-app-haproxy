@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from geo_manager.fetcher import (
+    build_geo_blocklist_map,
     build_geo_map,
     build_whitelist_map,
     download_url,
@@ -152,6 +153,39 @@ def test_merge_geo_map_contents():
 def test_merge_geo_map_contents_empty():
     assert merge_geo_map_contents("", "") == ""
     assert merge_geo_map_contents("1.0.0.0/24\tDE\n", "").strip() == "1.0.0.0/24\tDE"
+
+
+def test_build_geo_blocklist_map_filters_and_aggregates():
+    geo = (
+        "10.0.0.0/24\tDE\n"
+        "10.0.1.0/24\tDE\n"
+        "20.0.0.0/24\tUS\n"
+        "20.0.1.0/24\tUS\n"
+    )
+    out = build_geo_blocklist_map(geo, frozenset({"DE", "AT"}))
+    # Allowed country DE is excluded.
+    assert "10.0.0.0/24\t1" not in out
+    # US CIDRs collapse to /23.
+    assert "20.0.0.0/23\t1" in out
+
+
+def test_build_geo_blocklist_map_supports_ipv6():
+    geo = "2001:db8::/33\tUS\n2001:db8:8000::/33\tUS\n"
+    out = build_geo_blocklist_map(geo, frozenset({"DE"}))
+    assert "2001:db8::/32\t1" in out
+
+
+def test_build_geo_blocklist_map_empty_when_all_allowed():
+    geo = "10.0.0.0/8\tDE\n2001:db8::/32\tAT\n"
+    out = build_geo_blocklist_map(geo, frozenset({"DE", "AT"}))
+    assert out == ""
+
+
+def test_build_geo_blocklist_map_skips_comments_and_invalid_lines():
+    geo = "# comment\ninvalid-line\nbadcidr\tUS\n8.8.8.0/24\tUS\n"
+    out = build_geo_blocklist_map(geo, frozenset({"DE"}))
+    assert "8.8.8.0/24\t1" in out
+    assert "badcidr\t1" not in out
 
 
 def test_is_ip():

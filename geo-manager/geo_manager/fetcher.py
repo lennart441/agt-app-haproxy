@@ -386,6 +386,39 @@ def merge_geo_map_contents(content1: str, content2: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_geo_blocklist_map(
+    geo_content: str,
+    allowed_country_codes: frozenset,
+) -> str:
+    """
+    Convert geo map content (network\\tcountry) to fail-open blocklist map (network\\t1).
+    All networks with country NOT in allowed_country_codes are included and losslessly
+    aggregated with collapse_addresses, separated by IP version.
+    """
+    blocked_by_version: Dict[int, List[ipaddress._BaseNetwork]] = {4: [], 6: []}
+    for raw_line in geo_content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "\t" not in line:
+            continue
+        network_str, country = line.split("\t", 1)
+        country = country.strip().upper()
+        if country in allowed_country_codes:
+            continue
+        try:
+            network = ipaddress.ip_network(network_str.strip(), strict=False)
+        except ValueError:
+            continue
+        blocked_by_version.setdefault(network.version, []).append(network)
+
+    output_lines: List[str] = []
+    for version in (4, 6):
+        for network in ipaddress.collapse_addresses(blocked_by_version.get(version, [])):
+            output_lines.append(f"{network}\t1")
+
+    output_lines.sort(key=_sort_key_network)
+    return "\n".join(output_lines) + "\n" if output_lines else ""
+
+
 def write_maps(
     map_dir: str,
     geo_content: str,

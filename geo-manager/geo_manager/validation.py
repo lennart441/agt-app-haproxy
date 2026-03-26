@@ -10,8 +10,6 @@ import subprocess
 import tempfile
 from typing import TYPE_CHECKING, List, Optional
 
-from .config import DEFAULT_ALLOWED_COUNTRY_CODES
-
 if TYPE_CHECKING:
     from .config import Config
 
@@ -27,8 +25,8 @@ PEER_LINE_3_TEMPLATE = "   server agt-3 __MESH_IP_3__:50000"
 DEFAULT_HAPROXY_CRT_PATH = "/etc/ssl/certs/haproxy.pem"
 ENV_HAPROXY_CRT_PATH_FOR_VALIDATION = "HAPROXY_CRT_PATH_FOR_VALIDATION"
 
-# Size file to persist previous geo.map size
-GEO_MAP_SIZE_FILE = "geo.map.size"
+# Size file to persist previous geo blocklist map size
+GEO_MAP_SIZE_FILE = "geo_blocklist.map.size"
 
 
 def _build_peer_lines(config: "Config") -> tuple[str, str, str]:
@@ -124,7 +122,7 @@ def validate_syntax(
                 if sig == 9:
                     sig_hint += (
                         " (SIGKILL; often OOM killer or Docker/cgroup memory limit on "
-                        "geo-manager while parsing large geo.map)"
+                        "geo-manager while parsing large geo blocklist map)"
                     )
             logger.error(
                 "haproxy -c failed (code=%s)%s for cfg_path=%s (cwd=%s). stdout: %r stderr: %r",
@@ -221,26 +219,22 @@ def count_geo_data_lines(geo_map_content: str) -> int:
     return count
 
 
-def build_permissive_geo_map(allowed_country_codes: frozenset) -> str:
+def build_permissive_geo_map() -> str:
     """
-    Erzeugt eine permissive Geo-Map (alle IPs erlaubt) für Fail-Open.
-    IPv4 und IPv6 werden auf ein erlaubtes Länderkürzel gemappt.
+    Erzeugt eine permissive Geo-Blocklist (leer) für Fail-Open.
+    Leer bedeutet: kein src,map_ip-Treffer, also kein Geo-Block.
     """
-    if not allowed_country_codes:
-        code = "DE"
-    else:
-        code = sorted(allowed_country_codes)[0]
-    return f"0.0.0.0/0\t{code}\n::/0\t{code}\n"
+    return ""
 
 
-def _lookup_country_for_ip(geo_map_content: str, ip: str) -> Optional[str]:
+def _is_ip_blocked(geo_map_content: str, ip: str) -> bool:
     """
-    Find country code for a single IP from geo map content.
-    Map format: network\\tcountry per line. Longest matching prefix wins.
+    Check whether an IP is blocked by blocklist map content (network\\t1 per line).
+    Longest matching prefix wins for deterministic behavior on overlaps.
     """
     ip_obj = ipaddress.ip_address(ip)
-    best_match: Optional[str] = None
     best_prefix = -1
+    blocked = False
     for line in geo_map_content.strip().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
@@ -248,36 +242,31 @@ def _lookup_country_for_ip(geo_map_content: str, ip: str) -> Optional[str]:
         parts = line.split("\t", 1)
         if len(parts) < 2:
             continue
-        network_str, country = parts[0].strip(), parts[1].strip()
+        network_str, value = parts[0].strip(), parts[1].strip()
         try:
             network = ipaddress.ip_network(network_str, strict=False)
         except ValueError:
             continue
-        if ip_obj in network and network.prefixlen > best_prefix:
+        if ip_obj in network and network.prefixlen >= best_prefix:
             best_prefix = network.prefixlen
-            best_match = country
-    return best_match
+            blocked = value == "1"
+    return blocked
 
 
 def validate_anchors(
     geo_map_content: str,
     anchor_ips: List[str],
-    allowed_codes: frozenset = DEFAULT_ALLOWED_COUNTRY_CODES,
 ) -> bool:
     """
-    Every anchor IP must resolve to an allowed country in the new map.
-    Returns True if all anchors are allowed. If anchor_ips is empty, returns True (check skipped).
+    Every anchor IP must NOT be blocked by the blocklist map.
+    Returns True if all anchors pass. If anchor_ips is empty, returns True (check skipped).
     """
     for ip in anchor_ips:
         ip = ip.strip()
         if not ip or ip.startswith("#"):
             continue
-        country = _lookup_country_for_ip(geo_map_content, ip)
-        if country is None:
-            logger.warning("Anchor IP %s not found in map (will default to XX/blocked)", ip)
-            return False
-        if country.upper() not in allowed_codes:
-            logger.error("Anchor IP %s has country %s (not in allowed %s)", ip, country, allowed_codes)
+        if _is_ip_blocked(geo_map_content, ip):
+            logger.error("Anchor IP %s is blocked by geo blocklist", ip)
             return False
     return True
 

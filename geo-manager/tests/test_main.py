@@ -416,11 +416,11 @@ def test_master_fetch_validate_activate_success(
     config.map_dir = str(tmp_path)
     config.haproxy_cfg_path = str(tmp_path / "haproxy.cfg")
     config.anchor_ips = ["8.8.8.8"]
-    (tmp_path / "geo.map").write_text("old")
+    (tmp_path / "geo_blocklist.map").write_text("old")
     _master_fetch_validate_activate(config)
     mock_write.assert_called()
     mock_reload.assert_called_once()
-    assert not (tmp_path / "geo.map.bak").exists()
+    assert not (tmp_path / "geo_blocklist.map.bak").exists()
 
 
 @patch("geo_manager.main.trigger_reload")
@@ -449,7 +449,7 @@ def test_master_fetch_validate_activate_single_url_with_ipv6_merge(
     config.map_dir = str(tmp_path)
     config.haproxy_cfg_path = str(tmp_path / "haproxy.cfg")
     config.anchor_ips = ["8.8.8.8"]
-    (tmp_path / "geo.map").write_text("old")
+    (tmp_path / "geo_blocklist.map").write_text("old")
     _master_fetch_validate_activate(config)
     assert mock_single.call_count == 2
     mock_merge.assert_called_once()
@@ -493,7 +493,7 @@ def test_master_fetch_validate_activate_anchor_ips_empty_skips_check(
     config.map_dir = str(tmp_path)
     config.haproxy_cfg_path = str(tmp_path / "x.cfg")
     config.anchor_ips = []
-    (tmp_path / "geo.map").write_text("old")
+    (tmp_path / "geo_blocklist.map").write_text("old")
     _master_fetch_validate_activate(config)
     mock_anchors.assert_not_called()
     mock_reload.assert_called_once()
@@ -505,7 +505,7 @@ def test_master_fetch_validate_activate_anchor_ips_empty_skips_check(
 def test_master_fetch_validate_activate_anchor_fail(
     mock_single, mock_size, mock_anchors, tmp_path
 ):
-    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_single.return_value = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
     mock_size.return_value = True
     mock_anchors.return_value = False
     config = Config.from_env()
@@ -526,7 +526,7 @@ def test_master_fetch_validate_activate_anchor_fail(
 def test_master_fetch_validate_activate_fail_open_empty_content(
     mock_single, mock_whitelist, mock_write, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
-    """Bei leerer Geo-Liste: Fail-open, permissive Map schreiben, kein Abbruch."""
+    """Bei leerer Geo-Liste: Fail-open, leere Blocklist schreiben, kein Abbruch."""
     mock_single.return_value = ""
     mock_whitelist.return_value = ""
     mock_anchors.return_value = True
@@ -541,8 +541,7 @@ def test_master_fetch_validate_activate_fail_open_empty_content(
     # write_maps(map_dir, geo_content, whitelist_content, ...) → Index 1 = geo_content
     call_args = mock_write.call_args
     geo_content = call_args[0][1]
-    assert "0.0.0.0/0\t" in geo_content
-    assert "::/0\t" in geo_content
+    assert geo_content == ""
     mock_reload.assert_called_once()
 
 
@@ -555,7 +554,7 @@ def test_master_fetch_validate_activate_fail_open_empty_content(
 def test_master_fetch_validate_activate_fail_open_few_entries(
     mock_single, mock_whitelist, mock_write, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
-    """Bei weniger als 50 Einträgen: Fail-open, permissive Map."""
+    """Bei weniger als 50 Einträgen: Fail-open, leere Blocklist."""
     mock_single.return_value = "1.0.0.0/24\tDE\n2.0.0.0/24\tAT\n"
     mock_whitelist.return_value = ""
     mock_anchors.return_value = True
@@ -569,8 +568,7 @@ def test_master_fetch_validate_activate_fail_open_few_entries(
     _master_fetch_validate_activate(config)
     call_args = mock_write.call_args
     geo_content = call_args[0][1]
-    assert "0.0.0.0/0\t" in geo_content
-    assert "::/0\t" in geo_content
+    assert geo_content == ""
     mock_reload.assert_called_once()
 
 
@@ -582,10 +580,10 @@ def test_master_fetch_validate_activate_fail_open_few_entries(
 def test_master_fetch_validate_activate_syntax_fail_restores_backup(
     mock_single, mock_whitelist, mock_write, mock_syntax_with_config, mock_reload, tmp_path
 ):
-    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_single.return_value = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
     mock_whitelist.return_value = ""
     mock_syntax_with_config.return_value = False
-    (tmp_path / "geo.map").write_text("old")
+    (tmp_path / "geo_blocklist.map").write_text("old")
     config = Config.from_env()
     config.geo_source_url = "http://example.com/geo.csv"
     config.map_dir = str(tmp_path)
@@ -593,7 +591,7 @@ def test_master_fetch_validate_activate_syntax_fail_restores_backup(
     config.anchor_ips = []
     with pytest.raises(RuntimeError, match="Syntax check"):
         _master_fetch_validate_activate(config)
-    assert (tmp_path / "geo.map").read_text() == "old"
+    assert (tmp_path / "geo_blocklist.map").read_text() == "old"
 
 
 @patch("geo_manager.main.trigger_reload")
@@ -606,7 +604,7 @@ def test_master_fetch_validate_activate_syntax_fail_restores_backup(
 def test_master_fetch_validate_activate_reload_fails(
     mock_single, mock_whitelist, mock_write, mock_size, mock_anchors, mock_syntax_with_config, mock_reload, tmp_path
 ):
-    mock_single.return_value = "1.0.0.0/24\tDE\n"
+    mock_single.return_value = "\n".join([f"{i}.0.0.0/24\tDE" for i in range(50)])
     mock_whitelist.return_value = ""
     mock_size.return_value = True
     mock_anchors.return_value = True

@@ -80,8 +80,8 @@ Kurze Handlungsanleitungen bei typischen Störungen des Geo-Managers und des HAP
 
 **Manueller Rollback (pro Knoten):**
 
-1. Auf dem Knoten: Backup der Maps prüfen. Der Geo-Manager legt vor dem Überschreiben `geo.map.bak` an; nach erfolgreichem Reload wird sie gelöscht. Bei laufendem Betrieb existiert sie nur kurz.
-2. **Ohne Backup:** Alte Map-Datei von einem anderen Knoten oder aus einem Backup wiederherstellen nach `conf/maps/geo.map` (bzw. konfigurierter `MAP_DIR`). Dann HAProxy-Reload: `echo "reload" | socat STDIO UNIX-CONNECT:/var/run/haproxy-stat/master`.
+1. Auf dem Knoten: Backup der Maps prüfen. Der Geo-Manager legt vor dem Überschreiben `geo_blocklist.map.bak` an; nach erfolgreichem Reload wird sie gelöscht. Bei laufendem Betrieb existiert sie nur kurz.
+2. **Ohne Backup:** Alte Map-Datei von einem anderen Knoten oder aus einem Backup wiederherstellen nach `conf/maps/geo_blocklist.map` (bzw. konfigurierter `MAP_DIR`). Dann HAProxy-Reload: `echo "reload" | socat STDIO UNIX-CONNECT:/var/run/haproxy-stat/master`.
 3. **Dauerhafte Lösung:** Geo-Quelle korrigieren oder auf eine bekannte gute Version wechseln; auf dem Master „Deploy Geo-Listen jetzt“ ausführen. Follower übernehmen nach Staged-Delay (48h/96h), sofern nicht manuell auf allen Knoten zurückgesetzt wird.
 
 ---

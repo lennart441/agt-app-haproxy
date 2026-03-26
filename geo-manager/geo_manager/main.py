@@ -31,6 +31,7 @@ from .metrics import (
     to_prometheus as metrics_to_prometheus,
 )
 from .fetcher import (
+    build_geo_blocklist_map,
     build_whitelist_map,
     fetch_geo_csv_to_map,
     fetch_geo_from_single_url,
@@ -271,24 +272,25 @@ def _master_fetch_validate_activate(config: Config) -> None:
             if geo_ipv6.strip():
                 geo_content = merge_geo_map_contents(geo_content, geo_ipv6)
 
-    # Fail-open: Liste fehlt oder zu klein (< fail_open_min_entries) → alle durchlassen, aber Fehler loggen
+    # Fail-open: Country-Liste fehlt oder zu klein (< fail_open_min_entries) → Geo-Block deaktivieren.
     fail_open = False
+    blocklist_content = ""
     if not geo_content.strip():
         fail_open = True
         inc_fail_open_events()
         inc_fetch_fail_open()
         logger.error(
-            "Fail-open: Geo-Liste fehlt (leer). Erlaube alle Zugriffe; bitte GEO_SOURCE_URL prüfen."
+            "Fail-open: Geo-Liste fehlt (leer). Deaktiviere Geo-Block; bitte GEO_SOURCE_URL prüfen."
         )
         notify_fail_open(config, "Geo-Liste fehlt (leer)")
-        geo_content = build_permissive_geo_map(config.allowed_country_codes)
+        blocklist_content = build_permissive_geo_map()
     elif count_geo_data_lines(geo_content) < config.fail_open_min_entries:
         fail_open = True
         inc_fail_open_events()
         inc_fetch_fail_open()
         n = count_geo_data_lines(geo_content)
         logger.error(
-            "Fail-open: Geo-Liste hat nur %d Einträge (Minimum %d). Erlaube alle Zugriffe.",
+            "Fail-open: Geo-Liste hat nur %d Einträge (Minimum %d). Deaktiviere Geo-Block.",
             n,
             config.fail_open_min_entries,
         )
@@ -296,10 +298,17 @@ def _master_fetch_validate_activate(config: Config) -> None:
             config,
             f"Geo-Liste hat nur {n} Einträge (Minimum {config.fail_open_min_entries})",
         )
-        geo_content = build_permissive_geo_map(config.allowed_country_codes)
+        blocklist_content = build_permissive_geo_map()
+    else:
+        blocklist_content = build_geo_blocklist_map(
+            geo_content, config.allowed_country_codes
+        )
 
     if not fail_open and not validate_size(
-        geo_content, config.map_dir, config.size_deviation_threshold
+        blocklist_content,
+        config.map_dir,
+        config.size_deviation_threshold,
+        size_file="geo_blocklist.map.size",
     ):
         inc_validation_failure("size")
         notify_validation_failure(config, "size", "Size check failed")
@@ -307,25 +316,24 @@ def _master_fetch_validate_activate(config: Config) -> None:
 
     # Plausibilitätscheck (Anchor-Check): nur wenn ANCHOR_IPS gesetzt; leer = Check überspringen, nicht abbrechen
     if config.anchor_ips:
-        if not validate_anchors(
-            geo_content, config.anchor_ips, config.allowed_country_codes
-        ):
+        if not validate_anchors(blocklist_content, config.anchor_ips):
             inc_validation_failure("anchor")
             notify_validation_failure(config, "anchor", "Anchor check failed")
             raise RuntimeError("Anchor check failed")
     else:
         logger.info("ANCHOR_IPS empty: anchor plausibility check skipped")
 
-    geo_map_path = os.path.join(config.map_dir, "geo.map")
-    backup_path = os.path.join(config.map_dir, "geo.map.bak")
+    geo_map_path = os.path.join(config.map_dir, "geo_blocklist.map")
+    backup_path = os.path.join(config.map_dir, "geo_blocklist.map.bak")
     whitelist_content = build_whitelist_map(config.anchor_ips)
 
     if os.path.isfile(geo_map_path):
         os.replace(geo_map_path, backup_path)
     write_maps(
         config.map_dir,
-        geo_content,
+        blocklist_content,
         whitelist_content,
+        geo_path="geo_blocklist.map",
         chunk_size=config.build_chunk_size,
         sleep_after_chunk_ms=config.build_sleep_after_chunk_ms,
     )
@@ -342,7 +350,11 @@ def _master_fetch_validate_activate(config: Config) -> None:
     if os.path.isfile(backup_path):
         os.remove(backup_path)
 
-    persist_size(config.map_dir, len(geo_content.encode("utf-8")))
+    persist_size(
+        config.map_dir,
+        len(blocklist_content.encode("utf-8")),
+        size_file="geo_blocklist.map.size",
+    )
     if not trigger_reload(config.haproxy_socket):
         inc_reload_failure()
         notify_reload_failure(config, "HAProxy reload failed")

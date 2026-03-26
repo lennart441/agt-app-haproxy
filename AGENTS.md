@@ -16,7 +16,7 @@ Dieses Dokument ist die zentrale Referenz für KI-Agenten und Entwickler. Es bes
 
 - **Drei identische Knoten** (stateless), differenziert nur über ENV (`NODE_NAME`, `NODE_PRIO`, `MESH_NODES` usw.). Vernetzung über externes WireGuard-Mesh (z. B. 172.20.0.1–3).
 - **Pro Knoten**:
-  - **HAProxy 3.2 (Alpine)**: Loadbalancer, TLS, Geo-Maps (`geo.map`, `whitelist.map`), SPOE für WAF.
+  - **HAProxy 3.2 (Alpine)**: Loadbalancer, TLS, Geo-Maps (`geo_blocklist.map`, `whitelist.map`), SPOE für WAF.
   - **Coraza SPOA**: WAF-Agent (OWASP CRS), bereits integriert.
   - **Geo-Manager** (Sidecar): Python, Safety Pipeline (Download, Validierung, Staged Rollout), schreibt Maps, triggert HAProxy-Reload.
 
@@ -30,7 +30,7 @@ Detaillierte Architektur und Abläufe stehen im Plan unter `.cursor/plans/` bzw.
 |------|--------|
 | `conf/` | HAProxy- und WAF-Konfiguration: `conf.d/` (modulare Config), `coraza.cfg`, `coraza-spoa.yaml`, `errors/`, `maps/`. |
 | `conf/conf.d/` | Modulare HAProxy-Config (00-global, 10-peers, …, 60-backends); Entrypoint ersetzt Platzhalter und schreibt nach `/tmp/conf.d/`. |
-| `conf/maps/` | `geo.map`, `whitelist.map` (Geo-Manager), `hosts.map`, `routing.map`, `rate-limits.map` (Routing/Rate-Limits). |
+| `conf/maps/` | `geo_blocklist.map`, `whitelist.map` (Geo-Manager), `hosts.map`, `routing.map`, `rate-limits.map` (Routing/Rate-Limits). |
 | `ssl/` | `haproxy.pem` (Fullchain+Privkey), pro Server befüllen, nicht committen. |
 | `coraza/` | `Dockerfile.coraza` (Coraza SPOA Build), `rules/coreruleset/` (OWASP CRS als Git-Submodule). |
 | `geo-manager/` | Python-Paket `geo_manager`: Config, Fetcher, Validierung, Staging, Reload, HTTP-Status; plus Tests. |

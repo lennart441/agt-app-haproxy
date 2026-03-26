@@ -23,7 +23,7 @@ from geo_manager.validation import (
     validate_syntax,
     validate_syntax_with_config,
     persist_size,
-    _lookup_country_for_ip,
+    _is_ip_blocked,
     GEO_MAP_SIZE_FILE,
 )
 
@@ -300,46 +300,46 @@ def test_validate_size_zero_old(tmp_path):
     assert validate_size("content", str(tmp_path), 0.9) is True
 
 
-def test_lookup_country_for_ip():
-    content = "10.0.0.0/8\tDE\n192.168.1.0/24\tAT\n"
-    assert _lookup_country_for_ip(content, "10.1.2.3") == "DE"
-    assert _lookup_country_for_ip(content, "192.168.1.1") == "AT"
-    assert _lookup_country_for_ip(content, "8.8.8.8") is None
+def test_is_ip_blocked():
+    content = "10.0.0.0/8\t1\n192.168.1.0/24\t1\n"
+    assert _is_ip_blocked(content, "10.1.2.3") is True
+    assert _is_ip_blocked(content, "192.168.1.1") is True
+    assert _is_ip_blocked(content, "8.8.8.8") is False
 
 
-def test_lookup_country_for_ip_longest_prefix():
-    content = "10.0.0.0/8\tDE\n10.0.0.0/24\tAT\n"
-    assert _lookup_country_for_ip(content, "10.0.0.1") == "AT"
+def test_is_ip_blocked_longest_prefix():
+    content = "10.0.0.0/8\t1\n10.0.0.0/24\t0\n"
+    assert _is_ip_blocked(content, "10.0.0.1") is False
 
 
-def test_lookup_country_for_ip_line_without_tab_skipped():
-    content = "10.0.0.0/8\tDE\nsingle_column\n192.168.0.0/24\tAT\n"
-    assert _lookup_country_for_ip(content, "192.168.0.1") == "AT"
+def test_is_ip_blocked_line_without_tab_skipped():
+    content = "10.0.0.0/8\t1\nsingle_column\n192.168.0.0/24\t1\n"
+    assert _is_ip_blocked(content, "192.168.0.1") is True
 
 
-def test_lookup_country_for_ip_invalid_network_skipped():
-    content = "not-a-cidr\tDE\n10.0.0.0/8\tAT\n"
-    assert _lookup_country_for_ip(content, "10.0.0.1") == "AT"
+def test_is_ip_blocked_invalid_network_skipped():
+    content = "not-a-cidr\t1\n10.0.0.0/8\t1\n"
+    assert _is_ip_blocked(content, "10.0.0.1") is True
 
 
-def test_lookup_country_for_ip_skips_comments():
-    content = "# comment\n10.0.0.0/8\tDE\n"
-    assert _lookup_country_for_ip(content, "10.0.0.1") == "DE"
+def test_is_ip_blocked_skips_comments():
+    content = "# comment\n10.0.0.0/8\t1\n"
+    assert _is_ip_blocked(content, "10.0.0.1") is True
 
 
 def test_validate_anchors_all_allowed():
-    content = "8.8.8.8/32\tDE\n1.1.1.1/32\tAT\n"
+    content = "8.8.4.4/32\t1\n"
     assert validate_anchors(content, ["8.8.8.8", "1.1.1.1"]) is True
 
 
 def test_validate_anchors_one_blocked():
-    content = "8.8.8.8/32\tUS\n"
+    content = "8.8.8.8/32\t1\n"
     assert validate_anchors(content, ["8.8.8.8"]) is False
 
 
 def test_validate_anchors_missing_ip():
-    content = "10.0.0.0/8\tDE\n"
-    assert validate_anchors(content, ["8.8.8.8"]) is False
+    content = "10.0.0.0/8\t1\n"
+    assert validate_anchors(content, ["8.8.8.8"]) is True
 
 
 def test_validate_anchors_empty_list():
@@ -356,17 +356,11 @@ def test_count_geo_data_lines():
 
 
 def test_build_permissive_geo_map():
-    out = build_permissive_geo_map(frozenset({"DE", "AT"}))
-    assert "0.0.0.0/0\t" in out
-    assert "::/0\t" in out
-    assert out.strip().endswith("DE") or out.strip().endswith("AT")
-    empty = build_permissive_geo_map(frozenset())
-    assert "0.0.0.0/0\tDE\n" in empty
-    assert "::/0\tDE\n" in empty
+    assert build_permissive_geo_map() == ""
 
 
 def test_validate_anchors_skips_comments():
-    content = "8.8.8.8/32\tDE\n"
+    content = "8.8.4.4/32\t1\n"
     assert validate_anchors(content, ["# ignore", "8.8.8.8"]) is True
 
 

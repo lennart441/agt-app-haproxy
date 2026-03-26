@@ -16,7 +16,7 @@ conf/
 │   ├── 50-frontend-https.cfg        HTTPS-Frontend (WAF, Geo, Rate-Limits, Routing)
 │   └── 60-backends.cfg              Applikations-Backends (API, Website, Client)
 ├── maps/                            Map-Dateien für dynamische Konfiguration
-│   ├── geo.map                      Geo-IP-Zuordnung (vom Geo-Manager verwaltet)
+│   ├── geo_blocklist.map            Geo-IP-Blocklist (CIDR -> 1, vom Geo-Manager verwaltet)
 │   ├── whitelist.map                IP-Whitelist (RFC1918 + Anchors, Geo-Manager)
 │   ├── hosts.map                    Hostname → Typ (api/website/client)
 │   ├── routing.map                  Host+Pfad → Backend (map_beg Routing)
@@ -137,7 +137,6 @@ ersetzt werden (via `haproxy-docker-entrypoint.sh`):
 | `__CLUSTER_MAXCONN__` | `CLUSTER_MAXCONN` | Cluster-weites Verbindungslimit |
 | `__STATS_USER__` | `STATS_USER` | Stats-Dashboard Benutzer |
 | `__STATS_PASSWORD__` | `STATS_PASSWORD` | Stats-Dashboard Passwort |
-| `__GEO_ALLOWED_COUNTRIES_REGEX__` | `GEO_ALLOWED_COUNTRIES` | Erlaubte Länder als Regex |
 | `__MESH_IP_1/2/3__` | `MESH_NODES` | WireGuard-Mesh-IPs der Knoten |
 
 ## Docker-Integration

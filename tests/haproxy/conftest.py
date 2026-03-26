@@ -27,7 +27,7 @@ STATS_SOCKET = os.environ.get("HAPROXY_STATS_SOCKET", "/var/run/haproxy-stat/soc
 # ---------------------------------------------------------------------------
 # HAProxy map paths (inside the container)
 # ---------------------------------------------------------------------------
-GEO_MAP = "/usr/local/etc/haproxy/maps/geo.map"
+GEO_MAP = "/usr/local/etc/haproxy/maps/geo_blocklist.map"
 WHITELIST_MAP = "/usr/local/etc/haproxy/maps/whitelist.map"
 RATE_LIMITS_MAP = "/usr/local/etc/haproxy/maps/rate-limits.map"
 OVERLOAD_LIMITS_MAP = "/usr/local/etc/haproxy/maps/overload-limits.map"
@@ -35,10 +35,7 @@ OVERLOAD_LIMITS_MAP = "/usr/local/etc/haproxy/maps/overload-limits.map"
 # ---------------------------------------------------------------------------
 # Default map contents (for restoring after tests)
 # ---------------------------------------------------------------------------
-GEO_MAP_DEFAULTS = [
-    ("0.0.0.0/0", "DE"),
-    ("::/0", "DE"),
-]
+GEO_MAP_DEFAULTS = []
 WHITELIST_MAP_DEFAULTS = [
     ("127.0.0.0/8", "1"),
     ("10.0.0.0/8", "1"),

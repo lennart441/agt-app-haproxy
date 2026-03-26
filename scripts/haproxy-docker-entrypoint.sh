@@ -59,15 +59,12 @@ for f in "$CFG_SRC_DIR"/*.cfg; do
       "$f" > "$CFG_OUT_DIR/$(basename "$f")"
 done
 
-# Maps: Wenn geo.map/whitelist.map fehlen, permissive Defaults (Fail-Open: alle durchlassen).
+# Maps: Wenn geo_blocklist.map/whitelist.map fehlen, permissive Defaults (Fail-Open: alle durchlassen).
 MAP_DIR="${HAPROXY_MAP_DIR:-/usr/local/etc/haproxy/maps}"
 mkdir -p "$MAP_DIR"
-if [ ! -f "$MAP_DIR/geo.map" ]; then
-  FIRST_GEO="${GEO_ALLOWED_COUNTRIES%%,*}"
-  FIRST_GEO="${FIRST_GEO:-DE}"
-  FIRST_GEO="$(echo "$FIRST_GEO" | tr -d ' ')"
-  [ -z "$FIRST_GEO" ] && FIRST_GEO="DE"
-  printf '0.0.0.0/0\t%s\n::/0\t%s\n' "$FIRST_GEO" "$FIRST_GEO" > "$MAP_DIR/geo.map"
+if [ ! -f "$MAP_DIR/geo_blocklist.map" ]; then
+  # Empty blocklist = fail-open (no IP is blocked).
+  : > "$MAP_DIR/geo_blocklist.map"
 fi
 if [ ! -f "$MAP_DIR/whitelist.map" ]; then
   touch "$MAP_DIR/whitelist.map"

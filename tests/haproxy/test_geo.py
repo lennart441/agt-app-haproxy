@@ -1,6 +1,6 @@
 """Tests for Geo-IP blocking and runtime map updates.
 
-Default geo.map: 0.0.0.0/0 → DE (fail-open, everyone allowed).
+Default geo_blocklist.map: empty (fail-open, everyone allowed).
 Default whitelist.map: RFC1918 / loopback → 1 (always allowed).
 Allowed countries (test env): DE, AT, CH.
 
@@ -31,7 +31,7 @@ def _restore_geo():
 
 
 def test_geo_default_allows_all(base_url):
-    """With default geo.map (0.0.0.0/0 → DE), all requests are allowed."""
+    """With empty default geo blocklist, all requests are allowed."""
     r = requests.get(
         f"{base_url}/",
         headers={"Host": "agt-app.de"},
@@ -41,14 +41,14 @@ def test_geo_default_allows_all(base_url):
 
 
 def test_geo_blocked_country_gets_403(base_url):
-    """After mapping the test IP to a blocked country, requests get 403."""
+    """When source CIDR is in geo blocklist, requests get 403."""
     try:
         # Remove whitelist so Docker IPs are not exempt
         clear_map(WHITELIST_MAP)
-        # Map everything to a non-allowed country
+        # Block everything for test
         clear_map(GEO_MAP)
-        add_map(GEO_MAP, "0.0.0.0/0", "XX")
-        add_map(GEO_MAP, "::/0", "XX")
+        add_map(GEO_MAP, "0.0.0.0/0", "1")
+        add_map(GEO_MAP, "::/0", "1")
         time.sleep(0.2)
 
         r = requests.get(
@@ -62,15 +62,15 @@ def test_geo_blocked_country_gets_403(base_url):
 
 
 def test_geo_whitelist_bypasses_block(base_url):
-    """An IP in whitelist.map bypasses geo-blocking even for country XX.
+    """An IP in whitelist.map bypasses geo-blocking even when blocked in map.
 
     The default whitelist already contains Docker's 172.16.0.0/12 range.
-    We only modify geo.map (not the whitelist) so the whitelist remains
-    intact and the request is still allowed despite geo being XX.
+    We only modify geo map (not the whitelist) so the whitelist remains
+    intact and the request is still allowed despite blocklist hit.
     """
     try:
-        set_map(GEO_MAP, "0.0.0.0/0", "XX")
-        set_map(GEO_MAP, "::/0", "XX")
+        set_map(GEO_MAP, "0.0.0.0/0", "1")
+        set_map(GEO_MAP, "::/0", "1")
         time.sleep(0.2)
 
         r = requests.get(
@@ -88,8 +88,8 @@ def test_http_frontend_geo_block(http_url):
     try:
         clear_map(WHITELIST_MAP)
         clear_map(GEO_MAP)
-        add_map(GEO_MAP, "0.0.0.0/0", "XX")
-        add_map(GEO_MAP, "::/0", "XX")
+        add_map(GEO_MAP, "0.0.0.0/0", "1")
+        add_map(GEO_MAP, "::/0", "1")
         time.sleep(0.2)
 
         r = requests.get(
@@ -104,7 +104,7 @@ def test_http_frontend_geo_block(http_url):
 
 
 def test_geo_map_reload_no_downtime(base_url):
-    """Updating geo.map via Runtime API causes no 5xx for concurrent requests."""
+    """Updating geo_blocklist.map via Runtime API causes no 5xx for concurrent requests."""
     errors: list[int] = []
     running = True
 
@@ -127,9 +127,9 @@ def test_geo_map_reload_no_downtime(base_url):
 
     try:
         for _ in range(10):
-            set_map(GEO_MAP, "0.0.0.0/0", "AT")
+            set_map(GEO_MAP, "0.0.0.0/0", "1")
             time.sleep(0.05)
-            set_map(GEO_MAP, "0.0.0.0/0", "DE")
+            clear_map(GEO_MAP)
             time.sleep(0.05)
     finally:
         running = False

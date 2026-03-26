@@ -20,7 +20,7 @@ class Config:
     anchor_ips: List[str]
     allowed_country_codes: frozenset  # aus GEO_ALLOWED_COUNTRIES (kommasepariert), z. B. DE,AT,CH
     geo_source_url: str
-    geo_source_ipv6_url: Optional[str]  # optional second CSV (same format as GEO_SOURCE_URL), merged into geo.map
+    geo_source_ipv6_url: Optional[str]  # optional second CSV (same format as GEO_SOURCE_URL), merged into source map build
     geo_blocks_ipv6_url: Optional[str]  # optional IPv6 blocks CSV (MaxMind format), merged when using GEO_BLOCKS_URL
     map_dir: str
     haproxy_cfg_path: str
