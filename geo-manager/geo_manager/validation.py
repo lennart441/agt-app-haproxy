@@ -116,9 +116,20 @@ def validate_syntax(
         if result.returncode != 0:
             out = (getattr(result, "stdout", "") or "").strip()
             err = (getattr(result, "stderr", "") or "").strip()
+            sig_hint = ""
+            rc = result.returncode
+            if rc is not None and rc < 0:
+                sig = -rc
+                sig_hint = f"; terminated by signal {sig}"
+                if sig == 9:
+                    sig_hint += (
+                        " (SIGKILL; often OOM killer or Docker/cgroup memory limit on "
+                        "geo-manager while parsing large geo.map)"
+                    )
             logger.error(
-                "haproxy -c failed (code=%s) for cfg_path=%s (cwd=%s). stdout: %r stderr: %r",
-                result.returncode,
+                "haproxy -c failed (code=%s)%s for cfg_path=%s (cwd=%s). stdout: %r stderr: %r",
+                rc,
+                sig_hint,
                 haproxy_cfg_path,
                 map_dir,
                 out,

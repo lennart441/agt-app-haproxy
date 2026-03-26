@@ -250,6 +250,15 @@ def test_validate_syntax_failure(tmp_path):
         assert validate_syntax(str(cfg), str(tmp_path)) is False
 
 
+def test_validate_syntax_sigkill_no_output(tmp_path):
+    """Negative returncode: child killed by signal (e.g. -9 = SIGKILL / OOM)."""
+    cfg = tmp_path / "haproxy.cfg"
+    cfg.write_text("global\n  daemon\n")
+    with patch("geo_manager.validation.subprocess.run") as m:
+        m.return_value = MagicMock(returncode=-9, stdout="", stderr="")
+        assert validate_syntax(str(cfg), str(tmp_path)) is False
+
+
 def test_validate_syntax_haproxy_not_found(tmp_path):
     cfg = tmp_path / "haproxy.cfg"
     cfg.write_text("x")
