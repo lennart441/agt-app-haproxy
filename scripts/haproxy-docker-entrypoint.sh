@@ -77,4 +77,8 @@ rm -f "$SOCKET_DIR/socket"
 if ! chown 99:99 "$SOCKET_DIR" 2>/dev/null; then
   chmod 1777 "$SOCKET_DIR"
 fi
+RUN_AS_ROOT="${HAPROXY_RUN_AS_ROOT:-false}"
+if [ "$RUN_AS_ROOT" = "1" ] || [ "$RUN_AS_ROOT" = "true" ] || [ "$RUN_AS_ROOT" = "yes" ]; then
+  exec "$@"
+fi
 exec setpriv --reuid=99 --regid=99 --init-groups -- "$@"

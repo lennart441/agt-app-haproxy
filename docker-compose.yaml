@@ -17,6 +17,7 @@ services:
       - GEO_ALLOWED_COUNTRIES=${GEO_ALLOWED_COUNTRIES:-DE,AT,CH,FR,IT,LU,BE,NL}
       - STATS_USER=${STATS_USER:-admin}
       - STATS_PASSWORD=${STATS_PASSWORD:-change-me}
+      - HAPROXY_RUN_AS_ROOT=true
 
     entrypoint: ["sh", "/docker-entrypoint.sh"]
     # Master-Worker nötig, damit "reload" am Master-CLI Maps neu lädt (ohne -W würde reload am Stats-Socket ignoriert).
@@ -31,9 +32,6 @@ services:
       - ./conf/coraza-spoa.yaml:/etc/coraza-spoa/config.yaml:ro
       - ./conf/maps:/usr/local/etc/haproxy/maps
       - haproxy-stat:/var/run/haproxy-stat
-
-    sysctls:
-      net.ipv4.ip_unprivileged_port_start: 0
 
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/tmp/conf.d/"]
