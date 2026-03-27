@@ -8,6 +8,7 @@ services:
       dockerfile: haproxy/Dockerfile
     image: haproxy:3.2-alpine
     container_name: haproxy_gateway
+    network_mode: host
 
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
@@ -20,13 +21,6 @@ services:
     entrypoint: ["sh", "/docker-entrypoint.sh"]
     # Master-Worker nötig, damit "reload" am Master-CLI Maps neu lädt (ohne -W würde reload am Stats-Socket ignoriert).
     command: ["haproxy", "-W", "-S", "/var/run/haproxy-stat/master", "-f", "/tmp/conf.d/"]
-
-    ports:
-      - "80:80"
-      - "443:443"
-      - "50000:50000"
-      - "8404:8404"
-      - "56708:56708"
 
     volumes:
       - ./conf/conf.d:/usr/local/etc/haproxy/conf.d:ro
@@ -63,14 +57,14 @@ services:
           cpus: "2"
           memory: 1024M
 
-    networks:
-      - security-net
+    # network_mode: host (see above)
 
   coraza-spoa:
     build:
       context: .
       dockerfile: coraza/Dockerfile.coraza
     container_name: coraza-spoa
+    network_mode: host
     command: ["-config", "/etc/coraza-spoa/config.yaml"]
     stop_grace_period: 15s
     volumes:
@@ -82,10 +76,7 @@ services:
         limits:
           cpus: "1"
           memory: 256M
-    networks:
-      security-net:
-        aliases:
-          - coraza-spoa
+    # network_mode: host (see above)
 
   geo-manager:
     build:
@@ -102,7 +93,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 1024M
     environment:
       - NODE_NAME=${NODE_NAME:-agt-1}
       - NODE_PRIO=${NODE_PRIO:-1}
