@@ -1,5 +1,5 @@
 # /conf/coraza-spoa.yaml
-bind: 0.0.0.0:9000
+bind: 0.0.0.0:19100
 default_application: agt_waf
 log_level: info
 log_format: console
