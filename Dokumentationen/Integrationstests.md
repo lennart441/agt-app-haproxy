@@ -28,7 +28,7 @@ PYTEST_ARGS="-x -v --tb=long" ./scripts/run-haproxy-tests.sh
 Die Testumgebung besteht aus vier Docker-Containern, orchestriert über `tests/haproxy/docker-compose.test.yaml`:
 
 ```
-┌──────────────┐     HTTPS :443      ┌──────────────┐     SPOE :9000     ┌──────────────┐
+┌──────────────┐     HTTPS :443      ┌──────────────┐     SPOE :19100    ┌──────────────┐
 │  test-runner  │ ──────────────────▶ │   haproxy    │ ─────────────────▶ │  coraza-spoa │
 │  (pytest)     │     HTTP :80        │ (Prod-Config) │                    │ (OWASP CRS)  │
 └──────────────┘                      └──────┬───────┘                    └──────────────┘

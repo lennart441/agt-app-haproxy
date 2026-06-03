@@ -45,7 +45,11 @@ from .notify import (
     send_failure_mail,
 )
 from .reload import trigger_reload
-from .staging import get_master_validated_at, should_follower_activate
+from .staging import (
+    get_master_validated_at,
+    reset_pending_master_validated_at,
+    should_follower_activate,
+)
 from .validation import (
     build_permissive_geo_map,
     count_geo_data_lines,
@@ -81,6 +85,28 @@ def get_validated_at() -> Optional[datetime]:
 class GeoStatusHandler(BaseHTTPRequestHandler):
     """Serves GET /geo/status, /health, /metrics, /cluster and POST /geo/deploy-now."""
 
+    def _write_body(self, body: bytes) -> None:
+        """Write response body; clients may close early (health probes)."""
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            logger.debug(
+                "Client closed connection early from %s", self.client_address[0]
+            )
+
+    def _send_plain(self, status: int, content_type: str, body: bytes) -> None:
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            logger.debug(
+                "Client closed connection early from %s", self.client_address[0]
+            )
+            return
+        self._write_body(body)
+
     def do_GET(self):
         path = self.path.split("?")[0]
         config = self.server.config  # type: ignore
@@ -108,12 +134,7 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
 
     def _send_health(self) -> None:
         """GET /health: simple 200 OK for load balancer / monitoring."""
-        body = b"OK"
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_plain(200, "text/plain", b"OK")
 
     def _send_metrics(self) -> None:
         """GET /metrics: Prometheus text format (app metrics + cluster health). Never empty."""
@@ -125,11 +146,7 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
             body = (app_lines + cluster_lines).strip().encode("utf-8")
         else:
             body = app_lines.strip().encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_plain(200, "text/plain; charset=utf-8", body)
 
     def _send_cluster(self, config: Config) -> None:
         """GET /cluster: JSON cluster health (last probe result, latency, offline summary)."""
@@ -138,11 +155,7 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
             body = json.dumps({"last_probe_at": None, "nodes": [], "offline_summary": {}}).encode("utf-8")
         else:
             body = json.dumps(state.to_json_dict()).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_plain(200, "application/json", body)
 
     def _send_geo_status(self, config: Config) -> None:
         """GET /geo/status: node_prio, validated_at, map_version."""
@@ -154,11 +167,7 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
             "map_version": validated.isoformat() if validated else None,
         }
         body = json.dumps(payload).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_plain(200, "application/json", body)
 
     def _handle_geo_deploy_now(self, config: Config) -> None:
         """POST /geo/deploy-now: manually trigger fetch/validate/activate on master."""
@@ -169,18 +178,9 @@ class GeoStatusHandler(BaseHTTPRequestHandler):
             _master_fetch_validate_activate(config)
         except Exception as exc:
             msg = f"Geo deploy failed: {exc}".encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(msg)))
-            self.end_headers()
-            self.wfile.write(msg)
+            self._send_plain(500, "text/plain; charset=utf-8", msg)
             return
-        body = b"OK"
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_plain(200, "text/plain; charset=utf-8", b"OK")
 
     def log_message(self, format, *args):
         logger.debug("%s - %s", self.address_string(), format % args)
@@ -364,7 +364,9 @@ def _master_fetch_validate_activate(config: Config) -> None:
     set_validated_at(validated_at)
     metrics_set_last_validated(validated_at)
     inc_fetch_success()
-    logger.info("Master: map activated and reloaded")
+    reset_pending_master_validated_at()
+    role = "Master" if config.am_i_master() else "Follower"
+    logger.info("%s: map activated and reloaded", role)
 
 
 def _run_follower_iteration(config: Config) -> None:
@@ -376,12 +378,19 @@ def _run_follower_iteration(config: Config) -> None:
         return
     _master_ip, master_validated_at = result
     delay_hours = config.stage_delay_hours_for_prio(config.node_prio)
+    local_at = get_validated_at()
     if not should_follower_activate(
         config.node_prio,
         master_validated_at,
         delay_hours,
-        local_validated_at=get_validated_at(),
+        local_validated_at=local_at,
     ):
+        if local_at is not None and master_validated_at is not None:
+            logger.info(
+                "Follower: staged rollout waiting (%sh delay for prio %s)",
+                delay_hours,
+                config.node_prio,
+            )
         return
     success = False
     last_error: Optional[str] = None

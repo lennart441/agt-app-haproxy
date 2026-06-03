@@ -8,8 +8,16 @@ from geo_manager.staging import (
     get_master_status_url,
     fetch_node_status,
     get_master_validated_at,
+    reset_pending_master_validated_at,
     should_follower_activate,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_staging_pending():
+    reset_pending_master_validated_at()
+    yield
+    reset_pending_master_validated_at()
 
 
 def test_get_master_status_url():
@@ -135,5 +143,33 @@ def test_should_follower_activate_update_mode_elapsed_hours():
     master_old = now - timedelta(hours=100)
     local_any = now - timedelta(hours=1)
     assert should_follower_activate(2, master_old, 48, local_validated_at=local_any) is True
+    reset_pending_master_validated_at()
     master_recent = now - timedelta(hours=1)
     assert should_follower_activate(2, master_recent, 48, local_validated_at=local_any) is False
+
+
+def test_should_follower_activate_daily_master_does_not_reset_soak_timer():
+    """Master fetch every 24h must not reset the 48h soak timer for followers."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    local_stale = now - timedelta(days=70)
+    master_day1 = now - timedelta(hours=1)
+    assert should_follower_activate(2, master_day1, 48, local_validated_at=local_stale) is False
+    master_day2 = now - timedelta(hours=1)
+    assert should_follower_activate(2, master_day2, 48, local_validated_at=local_stale) is False
+    with patch("geo_manager.staging.datetime") as mock_dt:
+        mock_dt.now.return_value = now + timedelta(hours=50)
+        assert (
+            should_follower_activate(
+                2, master_day2, 48, local_validated_at=local_stale
+            )
+            is True
+        )
+
+
+def test_should_follower_activate_up_to_date_clears_pending():
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    local = now - timedelta(hours=1)
+    master_behind = now - timedelta(hours=50)
+    assert should_follower_activate(2, master_behind, 48, local_validated_at=local) is False

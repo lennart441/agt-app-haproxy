@@ -17,6 +17,7 @@ services:
       - GEO_ALLOWED_COUNTRIES=${GEO_ALLOWED_COUNTRIES:-DE,AT,CH,FR,IT,LU,BE,NL}
       - STATS_USER=${STATS_USER:-admin}
       - STATS_PASSWORD=${STATS_PASSWORD:-change-me}
+      # Host networking + privileged ports 80/443: run HAProxy as root (sysctl-based unprivileged bind is not allowed in host netns).
       - HAPROXY_RUN_AS_ROOT=true
 
     entrypoint: ["sh", "/docker-entrypoint.sh"]

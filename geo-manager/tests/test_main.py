@@ -111,11 +111,28 @@ def test_health_handler_200():
     handler = MagicMock()
     handler.path = "/health"
     handler.server = MagicMock()
+    handler.client_address = ("127.0.0.1", 12345)
     handler._send_health = lambda: GeoStatusHandler._send_health(handler)
     handler.wfile = MagicMock()
     GeoStatusHandler.do_GET(handler)
     handler.send_response.assert_called_once_with(200)
     handler.wfile.write.assert_called_once_with(b"OK")
+
+
+def test_write_body_broken_pipe():
+    handler = MagicMock()
+    handler.client_address = ("127.0.0.1", 12345)
+    handler.wfile = MagicMock()
+    handler.wfile.write.side_effect = BrokenPipeError()
+    GeoStatusHandler._write_body(handler, b"OK")
+
+
+def test_send_plain_broken_pipe_on_headers():
+    handler = MagicMock()
+    handler.client_address = ("127.0.0.1", 12345)
+    handler.end_headers.side_effect = BrokenPipeError()
+    GeoStatusHandler._send_plain(handler, 200, "text/plain", b"OK")
+    handler.wfile.write.assert_not_called()
 
 
 def test_metrics_handler_200():
