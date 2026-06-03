@@ -15,13 +15,42 @@ import time
 logger = logging.getLogger(__name__)
 
 CERT_SOCKET_TIMEOUT_SEC = 60
+_PROBE_TIMEOUT_SEC = 5
+
+
+def _connection_error_output(*parts: str | None) -> bool:
+    combined = "".join(p or "" for p in parts)
+    return (
+        "Connection refused" in combined
+        or "No such file or directory" in combined
+        or "Connection timed out" in combined
+    )
+
+
+def _socket_accepts_connections(socket_path: str) -> bool:
+    """True when HAProxy is listening on the stats socket (not just a stale file)."""
+    if not os.path.exists(socket_path):
+        return False
+    try:
+        result = subprocess.run(
+            ["socat", "-T2", "STDIO", f"UNIX-CONNECT:{socket_path}"],
+            input="show info\n",
+            capture_output=True,
+            text=True,
+            timeout=_PROBE_TIMEOUT_SEC,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    if result.returncode == 0:
+        return True
+    return not _connection_error_output(result.stderr, result.stdout)
 
 
 def _wait_for_socket(socket_path: str, wait_for_socket_sec: int) -> bool:
     if wait_for_socket_sec <= 0:
-        return os.path.exists(socket_path)
+        return _socket_accepts_connections(socket_path)
     deadline = time.monotonic() + wait_for_socket_sec
-    while not os.path.exists(socket_path):
+    while not _socket_accepts_connections(socket_path):
         if time.monotonic() >= deadline:
             return False
         logger.info("Waiting for HAProxy stats socket at %s ...", socket_path)
@@ -49,8 +78,8 @@ def apply_ssl_cert(
     Hot-swap the certificate in a running HAProxy via the stats socket.
 
     If socket_path is empty, reload is skipped (PEM on disk only).
-    If the socket is not available within wait_for_socket_sec, assume HAProxy
-    is not running yet and return True (PEM will load on next HAProxy start).
+    If HAProxy is not reachable within wait_for_socket_sec, return True:
+    PEM is on disk and HAProxy loads it on the next start.
     """
     if not socket_path:
         logger.debug("HAPROXY_STATS_SOCKET not set; skipping runtime cert update")
@@ -58,7 +87,7 @@ def apply_ssl_cert(
 
     if not _wait_for_socket(socket_path, wait_for_socket_sec):
         logger.info(
-            "HAProxy stats socket not available at %s; PEM written, "
+            "HAProxy stats socket not reachable at %s; PEM written, "
             "HAProxy will load certificate on next start",
             socket_path,
         )
@@ -89,6 +118,13 @@ def apply_ssl_cert(
         if part
     )
     if set_result.returncode != 0 or commit_result.returncode != 0:
+        if _connection_error_output(combined):
+            logger.info(
+                "HAProxy not reachable for cert hot-swap at %s; PEM written, "
+                "HAProxy will load certificate on next start",
+                socket_path,
+            )
+            return True
         logger.error(
             "HAProxy cert update failed (set=%s commit=%s): %s",
             set_result.returncode,
