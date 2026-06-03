@@ -152,6 +152,7 @@ def test_leader_increments_deploy_metrics(monkeypatch, tmp_path):
     (tmp_path / "privkey.pem").write_bytes(
         b"-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"
     )
+    monkeypatch.setattr("cert_manager.leader.apply_ssl_cert", lambda *a, **k: True)
     result = run_leader_once(cfg)
     assert result is True
     text = to_prometheus(cfg, None)
@@ -195,6 +196,7 @@ def test_follower_increments_sync_metrics(monkeypatch, tmp_path):
     monkeypatch.setattr(
         follower_mod, "download_cert_from_master", lambda ip, c, v: pem_bytes
     )
+    monkeypatch.setattr("cert_manager.leader.apply_ssl_cert", lambda *a, **k: True)
     result = follower_mod.run_follower_once(cfg)
     assert result is True
     text = to_prometheus(cfg, None)

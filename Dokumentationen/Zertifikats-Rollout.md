@@ -165,7 +165,8 @@ Der cert-manager startet im Container einen einfachen HTTP-Server auf `0.0.0.0:C
    - Prüft rudimentär, ob beide Dateien wie erwartete Zertifikat-/Key-Dateien aussehen.
    - Bildet ein kombiniertes PEM (`fullchain + privkey`) und schreibt es atomar nach `CERT_TARGET_PEM_PATH` (über `<path>.new` + `os.replace`).
    - Aktualisiert internen Zustand (`version`, `validated_since`).
-2. Weitere Aktualisierungen (z. B. nach `certbot renew`) können über einen später nachgerüsteten Cron/Hooks oder durch Neustart des Containers ausgelöst werden.
+   - Hot-Swap in laufendem HAProxy über Runtime-API (`set ssl cert` + `commit ssl cert` am Stats-Socket).
+2. Weitere Aktualisierungen (z. B. nach `certbot renew`) können über POST `/cert/deploy-now`, Dashboard-Button oder Container-Neustart ausgelöst werden.
 
 ### 4.2 Follower (Prio 2 und 3)
 
@@ -189,7 +190,8 @@ In `docker-compose.yaml` ist der cert-manager als eigener Dienst eingetragen:
 
 - Nutzung desselben Netzwerks `security-net`.
 - Gemeinsames Volume `./ssl:/etc/ssl/certs` mit HAProxy, sodass beide auf dieselbe PEM-Datei zugreifen.
-- Environment-Variablen wie oben beschrieben (`NODE_NAME`, `NODE_PRIO`, `MESH_NODES`, `CERT_*`).
+- Gemeinsames Volume `haproxy-stat:/var/run/haproxy-stat` mit HAProxy, damit der cert-manager Zertifikate per Runtime-API hot-swappen kann.
+- Environment-Variablen wie oben beschrieben (`NODE_NAME`, `NODE_PRIO`, `MESH_NODES`, `CERT_*`, `HAPROXY_STATS_SOCKET`).
 - Port 8081 ist auf dem Host gebunden, damit andere Knoten im WireGuard-Mesh den cert-manager erreichen können; Firewall-Zugriff auf das Mesh beschränken.
 
 Auf dem Master-Host muss zusätzlich ein Bind-Mount zu den Certbot-Dateien konfiguriert werden (siehe Beispiel in Abschnitt 2), damit cert-manager auf `fullchain.pem` und `privkey.pem` zugreifen kann.

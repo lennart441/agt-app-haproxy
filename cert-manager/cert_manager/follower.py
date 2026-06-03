@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 from .config import Config
-from .leader import write_target_pem
+from .leader import activate_pem
 from .metrics import inc_follower_sync_failure, inc_follower_sync_success
-from .state import CertState, compute_version, get_state, set_state_from_pem
+from .state import CertState, compute_version, get_state
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +156,9 @@ def run_follower_once(config: Config) -> bool:
     if pem is None:
         inc_follower_sync_failure()
         return False
-    write_target_pem(config, pem)
-    set_state_from_pem(pem)
+    if not activate_pem(config, pem):
+        inc_follower_sync_failure()
+        return False
     inc_follower_sync_success()
     logger.info(
         "Follower activated certificate version %s from %s",
@@ -197,8 +198,13 @@ def run_follower_loop(config: Config) -> None:  # pragma: no cover
             pem = download_cert_from_master(master_ip, config, master_state.version)
             if pem is None:
                 continue
-            write_target_pem(config, pem)
-            set_state_from_pem(pem)
+            if not activate_pem(config, pem):
+                logger.error(
+                    "Follower failed to activate certificate version %s from %s",
+                    master_state.version,
+                    master_ip,
+                )
+                continue
             logger.info(
                 "Follower activated new certificate version %s from %s",
                 master_state.version,

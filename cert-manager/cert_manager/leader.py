@@ -10,6 +10,7 @@ from typing import Optional
 
 from .config import Config
 from .metrics import inc_deploy_failure, inc_deploy_success
+from .reload import apply_ssl_cert
 from .state import set_state_from_pem
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,20 @@ def write_target_pem(config: Config, pem_bytes: bytes) -> None:
     logger.info("Wrote new certificate to %s", target)
 
 
+def activate_pem(config: Config, pem_bytes: bytes) -> bool:
+    """
+    Write PEM to disk, update state, and hot-swap the cert in running HAProxy.
+    """
+    write_target_pem(config, pem_bytes)
+    set_state_from_pem(pem_bytes)
+    return apply_ssl_cert(
+        config.haproxy_stats_socket,
+        config.haproxy_crt_path,
+        pem_bytes,
+        config.reload_wait_seconds,
+    )
+
+
 def run_leader_once(config: Config) -> bool:
     """
     Single leader iteration: build PEM, write it, update state.
@@ -81,8 +96,9 @@ def run_leader_once(config: Config) -> bool:
     if pem is None:
         inc_deploy_failure()
         return False
-    write_target_pem(config, pem)
-    set_state_from_pem(pem)
+    if not activate_pem(config, pem):
+        inc_deploy_failure()
+        return False
     inc_deploy_success()
     return True
 

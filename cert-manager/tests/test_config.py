@@ -11,6 +11,7 @@ def test_config_from_env_defaults(monkeypatch):
     monkeypatch.delenv("CERT_STAGE_DELAY_PRIO3_HOURS", raising=False)
     monkeypatch.delenv("CERT_POLL_INTERVAL_SECONDS", raising=False)
     monkeypatch.delenv("CERT_IS_MASTER", raising=False)
+    monkeypatch.delenv("HAPROXY_STATS_SOCKET", raising=False)
     cfg = Config.from_env()
     assert cfg.node_name == os.environ.get("NODE_NAME", "agt-1")
     assert cfg.node_prio == 1
@@ -20,6 +21,9 @@ def test_config_from_env_defaults(monkeypatch):
     assert cfg.stage_delay_prio2_hours == 1
     assert cfg.stage_delay_prio3_hours == 2
     assert cfg.poll_interval_seconds >= 30
+    assert cfg.haproxy_stats_socket == ""
+    assert cfg.haproxy_crt_path == "/etc/ssl/certs/haproxy.pem"
+    assert cfg.reload_wait_seconds == 30
 
 
 def test_stage_delay_hours_for_prio():
@@ -45,4 +49,14 @@ def test_config_from_env_invalid_values(monkeypatch):
     assert cfg.stage_delay_prio2_hours == 1
     assert cfg.stage_delay_prio3_hours == 2
     assert cfg.poll_interval_seconds >= 30
+
+
+def test_config_haproxy_reload_settings(monkeypatch):
+    monkeypatch.setenv("HAPROXY_STATS_SOCKET", "/var/run/haproxy-stat/socket")
+    monkeypatch.setenv("HAPROXY_CRT_PATH", "/custom/haproxy.pem")
+    monkeypatch.setenv("CERT_RELOAD_WAIT_SECONDS", "-5")
+    cfg = Config.from_env()
+    assert cfg.haproxy_stats_socket == "/var/run/haproxy-stat/socket"
+    assert cfg.haproxy_crt_path == "/custom/haproxy.pem"
+    assert cfg.reload_wait_seconds == 0
 

@@ -27,6 +27,10 @@ class Config:
     stage_delay_prio3_hours: int
     poll_interval_seconds: int
 
+    haproxy_stats_socket: str
+    haproxy_crt_path: str
+    reload_wait_seconds: int
+
     @classmethod
     def from_env(cls) -> "Config":
         mesh_raw = os.environ.get("MESH_NODES", "")
@@ -53,6 +57,13 @@ class Config:
         if poll_interval < 30:
             poll_interval = 30
 
+        target_pem = os.environ.get(
+            "CERT_TARGET_PEM_PATH", "/etc/ssl/certs/haproxy.pem"
+        ).strip()
+        reload_wait = _int("CERT_RELOAD_WAIT_SECONDS", 30)
+        if reload_wait < 0:
+            reload_wait = 0
+
         return cls(
             node_name=os.environ.get("NODE_NAME", "agt-1"),
             node_prio=node_prio,
@@ -63,12 +74,13 @@ class Config:
             cluster_key=os.environ.get("CERT_CLUSTER_KEY", "").strip(),
             source_fullchain=os.environ.get("CERT_SOURCE_FULLCHAIN", "").strip(),
             source_privkey=os.environ.get("CERT_SOURCE_PRIVKEY", "").strip(),
-            target_pem_path=os.environ.get(
-                "CERT_TARGET_PEM_PATH", "/etc/ssl/certs/haproxy.pem"
-            ),
+            target_pem_path=target_pem,
             stage_delay_prio2_hours=stage_delay2,
             stage_delay_prio3_hours=stage_delay3,
             poll_interval_seconds=poll_interval,
+            haproxy_stats_socket=os.environ.get("HAPROXY_STATS_SOCKET", "").strip(),
+            haproxy_crt_path=os.environ.get("HAPROXY_CRT_PATH", target_pem).strip(),
+            reload_wait_seconds=reload_wait,
         )
 
     def stage_delay_hours_for_prio(self, prio: int) -> int:

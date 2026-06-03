@@ -258,6 +258,37 @@ def test_run_follower_once_respects_delay_when_pem_exists(monkeypatch, tmp_path)
     assert target_pem.read_bytes() == b"existing-pem"
 
 
+def test_run_follower_once_reload_failure(monkeypatch, tmp_path):
+    target_pem = tmp_path / "haproxy.pem"
+    cfg = Config.from_env()
+    cfg.cert_is_master = False
+    cfg.mesh_nodes = ["10.0.0.1"]
+    cfg.target_pem_path = str(target_pem)
+    cfg.node_prio = 2
+    pem_bytes = b"-----BEGIN CERTIFICATE-----\ndummy\n-----END CERTIFICATE-----"
+    version = compute_version(pem_bytes)
+    status_body = json.dumps({
+        "node_prio": 1,
+        "node_name": "agt-1",
+        "cert_is_master": True,
+        "version": version,
+        "validated_since": datetime.now(timezone.utc).isoformat(),
+    }).encode("utf-8")
+
+    def fake_http_get(host, port, path, timeout=5.0):
+        if "status" in path:
+            return 200, status_body
+        if "download" in path:
+            return 200, pem_bytes
+        return 404, b""
+
+    monkeypatch.setattr("cert_manager.follower._http_get", fake_http_get)
+    monkeypatch.setattr("cert_manager.leader.apply_ssl_cert", lambda *a, **k: False)
+    ok = run_follower_once(cfg)
+    assert ok is False
+    assert target_pem.exists()
+
+
 def test_get_master_status_with_cluster_key(monkeypatch):
     cfg = Config.from_env()
     cfg.mesh_nodes = ["10.0.0.1"]

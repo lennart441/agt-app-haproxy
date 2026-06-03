@@ -40,6 +40,7 @@ def test_run_leader_once_writes_target(tmp_path, monkeypatch):
     monkeypatch.setenv("CERT_SOURCE_FULLCHAIN", fullchain)
     monkeypatch.setenv("CERT_SOURCE_PRIVKEY", privkey)
     monkeypatch.setenv("CERT_TARGET_PEM_PATH", str(target))
+    monkeypatch.setattr("cert_manager.leader.apply_ssl_cert", lambda *a, **k: True)
 
     cfg = Config.from_env()
     ok = run_leader_once(cfg)
@@ -50,6 +51,19 @@ def test_run_leader_once_writes_target(tmp_path, monkeypatch):
     state = get_state()
     assert state is not None
     assert state.version == compute_version(pem_bytes)
+
+
+def test_run_leader_once_reload_failure(tmp_path, monkeypatch):
+    fullchain, privkey = _make_tmp_files(tmp_path)
+    target = tmp_path / "haproxy.pem"
+    monkeypatch.setenv("CERT_SOURCE_FULLCHAIN", fullchain)
+    monkeypatch.setenv("CERT_SOURCE_PRIVKEY", privkey)
+    monkeypatch.setenv("CERT_TARGET_PEM_PATH", str(target))
+    monkeypatch.setattr("cert_manager.leader.apply_ssl_cert", lambda *a, **k: False)
+
+    cfg = Config.from_env()
+    assert run_leader_once(cfg) is False
+    assert target.exists()
 
 
 def test_set_state_from_pem_and_should_activate():

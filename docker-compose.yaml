@@ -176,11 +176,15 @@ services:
       - CERT_STAGE_DELAY_PRIO2_HOURS=${CERT_STAGE_DELAY_PRIO2_HOURS:-1}
       - CERT_STAGE_DELAY_PRIO3_HOURS=${CERT_STAGE_DELAY_PRIO3_HOURS:-2}
       - CERT_POLL_INTERVAL_SECONDS=${CERT_POLL_INTERVAL_SECONDS:-300}
+      - HAPROXY_STATS_SOCKET=${HAPROXY_STATS_SOCKET:-/var/run/haproxy-stat/socket}
+      - HAPROXY_CRT_PATH=${HAPROXY_CRT_PATH:-/etc/ssl/certs/haproxy.pem}
+      - CERT_RELOAD_WAIT_SECONDS=${CERT_RELOAD_WAIT_SECONDS:-30}
     volumes:
       - ./ssl:/etc/ssl/certs
       # Let's Encrypt: CERT_LE_BASE_HOST=/etc/letsencrypt mounten, damit live/<domain>/ Symlinks
       # auf archive/<domain>/ im Container auflösen. Ohne BASE nur CERT_LE_DIR_HOST (live/domain).
       - ${CERT_LE_BASE_HOST:-${CERT_LE_DIR_HOST:-/etc/letsencrypt/live/example.org}}:/certs:ro
+      - haproxy-stat:/var/run/haproxy-stat
     # Port 8081 auf Host binden, damit Follower (agt-2/agt-3) den Master im WireGuard-Mesh erreichen können.
     ports:
       - "8081:8081"
